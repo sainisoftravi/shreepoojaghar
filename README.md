@@ -185,3 +185,34 @@ shop/
 
 ## 📄 License
 Created for **श्री पूजा घर** (Ajmer). All rights reserved.
+
+
+
+
+env file 
+backend : 
+NODE_ENV=development
+PORT=3001
+ 
+# Database
+DATABASE_URL="postgresql://postgres:postgrespassword@localhost:5432/shreepooja?schema=public"
+DIRECT_URL="postgresql://postgres:postgrespassword@localhost:5432/shreepooja?schema=public"
+ 
+# Redis
+REDIS_URL="redis://localhost:6379"
+ 
+# Authentication
+JWT_SECRET="shreepoojaghr-super-secret-jwt-key-2024"
+JWT_EXPIRES_IN="30d"
+ 
+ 
+WHATSAPP_PROVIDER="opensource"
+WHATSAPP_PHONE_PAIR="917877496745"
+ 
+# CORS
+CORS_ORIGIN="*"
+
+
+frontend :
+PII_ENCRYPTION_KEY=8f8815e6c8c4c6caef1209be3e4549e1d138864eacdcfb921954e3e481a230b6
+ 
