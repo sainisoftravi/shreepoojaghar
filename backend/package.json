@@ -5,9 +5,10 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "prisma migrate deploy && node prisma/encrypt-customer-pii.js && node src/server.js",
+    "dev": "prisma migrate deploy && node prisma/encrypt-customer-pii.js && nodemon src/server.js",
     "db:migrate": "prisma migrate dev",
+    "db:encrypt-customer-pii": "node prisma/encrypt-customer-pii.js",
     "db:seed": "node prisma/seed.js",
     "test": "vitest run",
     "test:watch": "vitest"

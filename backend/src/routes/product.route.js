@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as productController from '../controllers/product.controller.js';
-import { validateProduct, validateProductDiscount } from '../validators/product.validator.js';
+import { validateProduct } from '../validators/product.validator.js';
 import { authenticate, authorize } from '../middleware/auth.middleware.js';
 import { upload } from '../middleware/upload.middleware.js';
 
@@ -15,7 +15,6 @@ router.get('/:id', authenticate, productController.getProductById);
 // Writes (Admin only)
 router.post('/', authenticate, authorize('ADMIN'), validateProduct, productController.createProduct);
 router.put('/:id', authenticate, authorize('ADMIN'), validateProduct, productController.updateProduct);
-router.patch('/:id/discount', authenticate, authorize('ADMIN'), validateProductDiscount, productController.updateProductDiscount);
 router.post('/:id/image', authenticate, authorize('ADMIN'), upload.single('image'), productController.uploadProductImage);
 router.delete('/:id', authenticate, authorize('ADMIN'), productController.deleteProduct);
 

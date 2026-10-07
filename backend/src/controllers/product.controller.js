@@ -57,15 +57,6 @@ export const updateProduct = async (req, res, next) => {
   }
 };
 
-export const updateProductDiscount = async (req, res, next) => {
-  try {
-    const product = await productService.updateProductDiscount(req.params.id, req.body.discountPercent);
-    res.json({ success: true, message: 'Product discount updated', data: product });
-  } catch (error) {
-    next(error);
-  }
-};
-
 export const uploadProductImage = async (req, res, next) => {
   try {
     if (!req.file) {

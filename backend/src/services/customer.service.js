@@ -1,4 +1,6 @@
 import { PrismaClient } from '@prisma/client';
+import { decryptCustomerPii, decryptInvoicePii, getCustomerPhoneLookup } from '../utils/customer-privacy.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const prisma = new PrismaClient();
 
@@ -12,12 +14,15 @@ export const listCustomers = async ({ page = 1, limit = 20 } = {}) => {
     }),
     prisma.customer.count(),
   ]);
-  return { customers, total, page, limit };
+  return { customers: customers.map(decryptCustomerPii), total, page, limit };
 };
 
 export const getCustomerByPhone = async (phone) => {
-  return await prisma.customer.findUnique({
-    where: { phone },
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) return null;
+
+  const customer = await prisma.customer.findUnique({
+    where: { phoneLookup: getCustomerPhoneLookup(normalizedPhone) },
     include: {
       invoices: {
         take: 10,
@@ -25,4 +30,10 @@ export const getCustomerByPhone = async (phone) => {
       },
     },
   });
+
+  if (!customer) return null;
+  return {
+    ...decryptCustomerPii(customer),
+    invoices: customer.invoices.map(decryptInvoicePii),
+  };
 };

@@ -5,7 +5,15 @@ import { markWaFailed, markWaQueued } from '../services/invoice.service.js';
 
 export const posCheckout = async (req, res, next) => {
   try {
-    const { customerName, phone, paymentMode, items, idempotencyKey: bodyIdempotencyKey } = req.body;
+    const {
+      customerName,
+      phone,
+      paymentMode,
+      items,
+      discountType = 'AMOUNT',
+      discountValue = 0,
+      idempotencyKey: bodyIdempotencyKey,
+    } = req.body;
     const idempotencyKey = req.get('x-idempotency-key') || bodyIdempotencyKey;
 
     // Run the full checkout transaction
@@ -14,6 +22,8 @@ export const posCheckout = async (req, res, next) => {
       phone,
       paymentMode,
       items,
+      discountType,
+      discountValue,
       idempotencyKey,
     });
 
@@ -27,9 +37,6 @@ export const posCheckout = async (req, res, next) => {
         await markWaQueued(invoice.id);
         await whatsappQueue.add('send-invoice', {
           invoiceId: invoice.id,
-          invoiceNo: invoice.invoiceNo,
-          customerPhone: invoice.customerPhone,
-          customerName: invoice.customerName,
         });
         waStatus = 'QUEUED';
         logger.info({ invoiceId: invoice.id }, 'WhatsApp job queued');
@@ -47,6 +54,8 @@ export const posCheckout = async (req, res, next) => {
       success: true,
       invoiceNo: invoice.invoiceNo,
       total: Number(invoice.totalAmount),
+      subtotal: Number(invoice.subtotal),
+      discountAmount: Number(invoice.discountAmount),
       profit: Number(invoice.totalProfit),
       waStatus,
     });

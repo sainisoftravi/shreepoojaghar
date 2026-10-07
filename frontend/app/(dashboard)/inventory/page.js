@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api.js';
 import { useAuth } from '../../../context/AuthContext.js';
-import { Package, Plus, AlertTriangle, Layers, Tag, DollarSign, Search, Trash2, X, Check, Percent } from 'lucide-react';
+import { Package, Plus, AlertTriangle, Layers, Tag, DollarSign, Search, Trash2, X, Check } from 'lucide-react';
 
 const getPurchaseUnits = (product) => {
   const units = product?.units || [];
@@ -29,10 +29,6 @@ export default function InventoryPage() {
   // Modals
   const [showProductModal, setShowProductModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
-  const [discountProduct, setDiscountProduct] = useState(null);
-  const [discountDraft, setDiscountDraft] = useState('0');
-  const [discountError, setDiscountError] = useState('');
-  const [savingDiscount, setSavingDiscount] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
   // New Product Form
@@ -43,7 +39,6 @@ export default function InventoryPage() {
   const [allowDecimalQty, setAllowDecimalQty] = useState(true);
   const [barcode, setBarcode] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
-  const [discountPercent, setDiscountPercent] = useState('0');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
 
@@ -177,7 +172,6 @@ export default function InventoryPage() {
           baseUnit,
           allowDecimalQty,
           lowStockThreshold: parseFloat(lowStockThreshold) || 0,
-          discountPercent: parseFloat(discountPercent) || 0,
           barcode: barcode.trim() || undefined,
           units: units.map((u, i) => ({
             ...u,
@@ -253,39 +247,6 @@ export default function InventoryPage() {
     setShowBatchModal(true);
   };
 
-  const openDiscountModal = (product) => {
-    setDiscountProduct(product);
-    setDiscountDraft(String(product.discountPercent || 0));
-    setDiscountError('');
-  };
-
-  const handleSaveDiscount = async (e) => {
-    e.preventDefault();
-    const value = Number(discountDraft);
-    if (!Number.isFinite(value) || value < 0 || value > 100) {
-      setDiscountError('Enter a discount from 0% to 100%.');
-      return;
-    }
-
-    setSavingDiscount(true);
-    setDiscountError('');
-    try {
-      const response = await apiFetch(`/products/${discountProduct.id}/discount`, {
-        method: 'PATCH',
-        body: JSON.stringify({ discountPercent: value }),
-      });
-      const updatedProduct = response.data;
-      setProducts((current) => current.map((product) => (
-        product.id === updatedProduct.id ? { ...product, ...updatedProduct } : product
-      )));
-      setDiscountProduct(null);
-    } catch (err) {
-      setDiscountError(err.message || 'Could not update this discount.');
-    } finally {
-      setSavingDiscount(false);
-    }
-  };
-
   const resetProductForm = () => {
     setNameEn('');
     setNameHi('');
@@ -293,7 +254,6 @@ export default function InventoryPage() {
     setBaseUnit('kg');
     setAllowDecimalQty(true);
     setLowStockThreshold(10);
-    setDiscountPercent('0');
     setImageFile(null);
     setImagePreview(null);
     applyPreset('kg_bori');
@@ -403,11 +363,6 @@ export default function InventoryPage() {
                     <td>
                       <div style={{ fontWeight: 700, color: '#0f172a', overflowWrap: 'anywhere' }}>{p.nameEn}</div>
                       <div style={{ fontSize: '0.82rem', color: '#64748b', overflowWrap: 'anywhere' }}>{p.nameHi}</div>
-                      {Number(p.discountPercent) > 0 && (
-                        <span style={{ display: 'inline-flex', marginTop: '0.3rem', padding: '0.18rem 0.45rem', borderRadius: 999, background: '#fff1e8', color: '#b54708', fontSize: '0.72rem', fontWeight: 750 }}>
-                          {Number(p.discountPercent)}% off
-                        </span>
-                      )}
                       {p.barcode && <code style={{ fontSize: '0.75rem', color: '#64748b' }}>Barcode: {p.barcode}</code>}
                     </td>
                     <td><span className="badge badge-info">{p.category?.nameEn}</span></td>
@@ -420,12 +375,7 @@ export default function InventoryPage() {
                         {p.units?.map((u) => (
                           <span key={u.id} style={{ background: '#f8fafc', color: '#334155', padding: '3px 7px', borderRadius: 6, fontSize: '0.78rem', border: '1px solid #e2e8f0' }}>
                             <strong>{u.nameEn}</strong>:{' '}
-                            {Number(p.discountPercent) > 0 ? (
-                              <>
-                                <span style={{ color: '#94a3b8', textDecoration: 'line-through', marginRight: 4 }}>₹{Number(u.sellingPrice).toFixed(2)}</span>
-                                <strong style={{ color: '#c2410c' }}>₹{Number(u.discountedPrice ?? u.sellingPrice).toFixed(2)}</strong>
-                              </>
-                            ) : ` ₹${u.sellingPrice}`}
+                            {' '}₹{Number(u.sellingPrice).toFixed(2)}
                           </span>
                         ))}
                       </div>
@@ -437,9 +387,6 @@ export default function InventoryPage() {
                     </td>
                     {user?.role === 'ADMIN' && (
                       <td style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                        <button onClick={() => openDiscountModal(p)} className="btn btn-sm btn-secondary" title="Set product discount">
-                          <Percent size={14} /> {Number(p.discountPercent) > 0 ? `${Number(p.discountPercent)}% off` : 'Discount'}
-                        </button>
                         <button onClick={() => openBatchModalForProduct(p)} className="btn btn-sm btn-secondary" title="Add Stock Batch">
                           <Plus size={14} /> Add Batch
                         </button>
@@ -454,35 +401,6 @@ export default function InventoryPage() {
             </tbody>
           </table>
         </div>
-
-        {discountProduct && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(3px)', zIndex: 110, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-            <div className="inv-modal glass-panel animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="discount-modal-title">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <h2 id="discount-modal-title" style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Product discount</h2>
-                  <p style={{ color: '#64748b', fontSize: '0.88rem', margin: '0.25rem 0 0' }}>{discountProduct.nameEn}</p>
-                </div>
-                <button type="button" onClick={() => setDiscountProduct(null)} aria-label="Close discount dialog" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={20} /></button>
-              </div>
-              {discountError && <div role="alert" style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '0.65rem', borderRadius: 8, fontSize: '0.85rem', marginBottom: '1rem' }}>{discountError}</div>}
-              <form onSubmit={handleSaveDiscount}>
-                <div className="input-group">
-                  <label htmlFor="existing-product-discount">Discount percentage</label>
-                  <div style={{ position: 'relative' }}>
-                    <input id="existing-product-discount" type="number" min="0" max="100" step="0.01" className="input-control" value={discountDraft} onChange={(e) => setDiscountDraft(e.target.value)} autoFocus />
-                    <span style={{ position: 'absolute', right: '0.9rem', top: '50%', transform: 'translateY(-50%)', color: '#475569', fontWeight: 700 }}>%</span>
-                  </div>
-                  <small style={{ color: '#64748b', lineHeight: 1.45 }}>Applies to all selling sizes and is calculated automatically at checkout. Set 0 to remove the discount.</small>
-                </div>
-                <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-                  <button type="button" onClick={() => setDiscountProduct(null)} className="btn btn-secondary">Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={savingDiscount}>{savingDiscount ? 'Saving...' : 'Save discount'}</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {/* ─── Add Product Modal ─── */}
         {showProductModal && (
@@ -570,12 +488,6 @@ export default function InventoryPage() {
                 <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <input type="checkbox" id="decimalQty" checked={allowDecimalQty} onChange={(e) => setAllowDecimalQty(e.target.checked)} />
                   <label htmlFor="decimalQty" style={{ fontSize: '0.85rem', color: '#334155', cursor: 'pointer' }}>Allow decimal quantities at checkout (e.g. 0.5 kg / 500g)</label>
-                </div>
-
-                <div className="input-group" style={{ marginBottom: '1rem', maxWidth: 280 }}>
-                  <label htmlFor="quick-product-discount">Product discount (%)</label>
-                  <input id="quick-product-discount" type="number" min="0" max="100" step="0.01" className="input-control" value={discountPercent} onChange={(e) => setDiscountPercent(e.target.value)} />
-                  <small style={{ color: '#64748b', lineHeight: 1.4 }}>Applied to every selling unit and shown on its POS card.</small>
                 </div>
 
                 {/* Sell & Purchase Units Table */}

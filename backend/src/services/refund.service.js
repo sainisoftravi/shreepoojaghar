@@ -53,7 +53,8 @@ export const processRefund = async ({ invoiceItemId, qtyInUnit, idempotencyKey, 
 
       // Lock InvoiceItem FOR UPDATE
       const lockedItems = await tx.$queryRaw`
-        SELECT id, invoice_id, product_id, factor_to_base, qty_in_unit, qty_base, refunded_qty_base, unit_price, line_total, cogs, profit
+        SELECT id, invoice_id, product_id, factor_to_base, qty_in_unit, qty_base, refunded_qty_base,
+               unit_price, gross_line_total, discount_amount, line_total, cogs, profit
         FROM invoice_items
         WHERE id = ${invoiceItemId}
         FOR UPDATE
@@ -81,12 +82,15 @@ export const processRefund = async ({ invoiceItemId, qtyInUnit, idempotencyKey, 
       const isFinalPartialRefund = refundQtyBaseDec.gte(availableToRefundBaseDec.minus(0.0001));
 
       // Unit price snapshot from line item
-      const unitPriceDec = new Decimal(item.unit_price.toString());
       const itemLineTotalDec = new Decimal(item.line_total.toString());
+      const itemGrossLineTotalDec = new Decimal(item.gross_line_total.toString());
+      const itemDiscountDec = new Decimal(item.discount_amount.toString());
       const itemCogsDec = new Decimal(item.cogs.toString());
       const itemProfitDec = new Decimal(item.profit.toString());
 
       let refundAmountDec = new Decimal(0);
+      let subtotalRefundDec = new Decimal(0);
+      let discountReversedDec = new Decimal(0);
       let cogsReversedDec = new Decimal(0);
       let profitReversedDec = new Decimal(0);
 
@@ -99,19 +103,25 @@ export const processRefund = async ({ invoiceItemId, qtyInUnit, idempotencyKey, 
         const prevRefundSum = previousRefunds.reduce(
           (acc, r) => ({
             amount: acc.amount.add(new Decimal(r.refundAmount.toString())),
+            subtotal: acc.subtotal.add(new Decimal(r.subtotalAmount.toString())),
+            discount: acc.discount.add(new Decimal(r.discountReversed.toString())),
             cogs: acc.cogs.add(new Decimal(r.cogsReversed.toString())),
             profit: acc.profit.add(new Decimal(r.profitReversed.toString())),
           }),
-          { amount: new Decimal(0), cogs: new Decimal(0), profit: new Decimal(0) }
+          { amount: new Decimal(0), subtotal: new Decimal(0), discount: new Decimal(0), cogs: new Decimal(0), profit: new Decimal(0) }
         );
 
         refundAmountDec = itemLineTotalDec.minus(prevRefundSum.amount);
+        subtotalRefundDec = itemGrossLineTotalDec.minus(prevRefundSum.subtotal);
+        discountReversedDec = itemDiscountDec.minus(prevRefundSum.discount);
         cogsReversedDec = itemCogsDec.minus(prevRefundSum.cogs);
         profitReversedDec = itemProfitDec.minus(prevRefundSum.profit);
       } else {
         // Proportional refund
         const proportionDec = refundQtyBaseDec.div(itemQtyBaseDec);
-        refundAmountDec = itemLineTotalDec.mul(proportionDec).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        subtotalRefundDec = itemGrossLineTotalDec.mul(proportionDec).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        discountReversedDec = itemDiscountDec.mul(proportionDec).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        refundAmountDec = subtotalRefundDec.minus(discountReversedDec);
         cogsReversedDec = itemCogsDec.mul(proportionDec).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
         profitReversedDec = refundAmountDec.minus(cogsReversedDec);
       }
@@ -196,6 +206,8 @@ export const processRefund = async ({ invoiceItemId, qtyInUnit, idempotencyKey, 
         where: { id: item.invoice_id },
         data: {
           totalAmount: { decrement: refundAmountDec.toNumber() },
+          subtotal: { decrement: subtotalRefundDec.toNumber() },
+          discountAmount: { decrement: discountReversedDec.toNumber() },
           totalProfit: { decrement: profitReversedDec.toNumber() },
         },
       });
@@ -213,6 +225,8 @@ export const processRefund = async ({ invoiceItemId, qtyInUnit, idempotencyKey, 
           qtyInUnit: requestedQtyUnitDec.toNumber(),
           qtyBase: refundQtyBaseDec.toNumber(),
           refundAmount: refundAmountDec.toFixed(2),
+          subtotalAmount: subtotalRefundDec.toFixed(2),
+          discountReversed: discountReversedDec.toFixed(2),
           cogsReversed: cogsReversedDec.toFixed(2),
           profitReversed: profitReversedDec.toFixed(2),
         },

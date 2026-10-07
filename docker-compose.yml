@@ -11,7 +11,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -26,7 +26,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -48,6 +48,7 @@ services:
       REDIS_URL: "redis://redis:6379"
       JWT_SECRET: "shreepoojaghar-super-secret-jwt-key-2024"
       JWT_EXPIRES_IN: "30d"
+      PII_ENCRYPTION_KEY: "${PII_ENCRYPTION_KEY:?Set PII_ENCRYPTION_KEY in the project .env file}"
       WHATSAPP_PROVIDER: "opensource"
       CORS_ORIGIN: "*"
     ports:
@@ -78,7 +79,5 @@ services:
       - backend
 
 volumes:
-  postgres_data:
-  redis_data:
   product_uploads:
   whatsapp_session:

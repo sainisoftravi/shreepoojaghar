@@ -7,24 +7,24 @@ const FORBIDDEN_REGEX = /cost|profit|margin|vendor|purchase|cogs/i;
 
 const PRODUCT_WHITELIST = [
   'id', 'barcode', 'nameEn', 'nameHi', 'imageUrl', 'categoryId', 'category',
-  'baseUnit', 'allowDecimalQty', 'lowStockThreshold', 'totalStockBase', 'discountPercent',
+  'baseUnit', 'allowDecimalQty', 'lowStockThreshold', 'totalStockBase',
   'totalAvailableStock', 'formattedStock', 'units', 'createdAt', 'updatedAt',
 ];
 
 const UNIT_WHITELIST = [
   'id', 'productId', 'nameEn', 'nameHi', 'factorToBase', 'isSellUnit',
-  'sellingPrice', 'discountedPrice', 'priceOverride', 'minQty', 'qtyStep', 'barcode', 'sortOrder',
+  'sellingPrice', 'priceOverride', 'minQty', 'qtyStep', 'barcode', 'sortOrder',
 ];
 
 const INVOICE_WHITELIST = [
   'id', 'invoiceNo', 'idempotencyKey', 'requestHash', 'customerId', 'customer',
-  'customerPhone', 'customerName', 'totalAmount', 'paymentMode', 'waStatus',
+  'customerPhone', 'customerName', 'subtotal', 'discountAmount', 'totalAmount', 'paymentMode', 'waStatus',
   'items', 'refunds', 'createdAt', 'updatedAt',
 ];
 
 const ITEM_WHITELIST = [
   'id', 'invoiceId', 'productId', 'productName', 'unitName', 'factorToBase',
-  'qtyInUnit', 'qtyBase', 'refundedQtyBase', 'unitPrice', 'lineTotal',
+  'qtyInUnit', 'qtyBase', 'refundedQtyBase', 'unitPrice', 'grossLineTotal', 'discountAmount', 'lineTotal',
   'quantity', 'unitSalePrice', 'createdAt',
 ];
 
@@ -48,8 +48,10 @@ function sanitizeObject(obj, allowedKeys) {
       result.items = obj.items ? obj.items.map((i) => sanitizeObject(i, ITEM_WHITELIST)) : [];
     } else if (key === 'customer') {
       result.customer = obj.customer ? sanitizeObject(obj.customer, CUSTOMER_WHITELIST) : null;
+    } else if (Array.isArray(obj[key])) {
+      result[key] = obj[key].map((item) => sanitizeFinancials(item, 'CASHIER'));
     } else if (typeof obj[key] === 'object' && obj[key] !== null && !(obj[key] instanceof Date)) {
-      result[key] = sanitizeObject(obj[key], null);
+      result[key] = sanitizeFinancials(obj[key], 'CASHIER');
     } else {
       result[key] = obj[key];
     }

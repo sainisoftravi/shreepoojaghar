@@ -31,7 +31,6 @@ model Product {
   allowDecimalQty   Boolean        @default(false) @map("allow_decimal_qty")
   lowStockThreshold Decimal        @default(0) @db.Decimal(12, 3) @map("low_stock_threshold")
   totalStockBase    Decimal        @default(0) @db.Decimal(12, 3) @map("total_stock_base")
-  discountPercent   Decimal        @default(0) @db.Decimal(5, 2) @map("discount_percent")
   minAlertQty       Int            @default(0) @map("min_alert_qty")
   units             ProductUnit[]
   batches           ProductBatch[]
@@ -100,7 +99,9 @@ model ProductBatch {
 
 model Customer {
   id            String         @id @default(uuid())
+  // Phone and name fields contain AES-256-GCM ciphertext; phoneLookup is a keyed HMAC for exact lookup.
   phone         String         @unique
+  phoneLookup   String?        @unique @map("phone_lookup")
   name          String?
   firstName     String?        @map("first_name")
   totalOrders   Int            @default(0) @map("total_orders")
@@ -125,6 +126,8 @@ model SalesInvoice {
   customer       Customer?            @relation(fields: [customerId], references: [id])
   customerPhone  String?              @map("customer_phone")
   customerName   String?              @map("customer_name")
+  subtotal       Decimal              @default(0) @db.Decimal(10, 2) @map("subtotal")
+  discountAmount Decimal             @default(0) @db.Decimal(10, 2) @map("discount_amount")
   totalAmount    Decimal              @db.Decimal(10, 2) @map("total_amount")
   totalProfit    Decimal              @db.Decimal(10, 2) @map("total_profit")
   paymentMode    String               @map("payment_mode") // CASH, UPI, CARD, KHATA
@@ -151,6 +154,8 @@ model InvoiceItem {
   qtyBase         Decimal                      @default(1) @db.Decimal(12, 3) @map("qty_base")
   refundedQtyBase Decimal                      @default(0) @db.Decimal(12, 3) @map("refunded_qty_base")
   unitPrice       Decimal                      @default(0) @db.Decimal(10, 2) @map("unit_price")
+  grossLineTotal  Decimal                      @default(0) @db.Decimal(10, 2) @map("gross_line_total")
+  discountAmount  Decimal                      @default(0) @db.Decimal(10, 2) @map("discount_amount")
   lineTotal       Decimal                      @default(0) @db.Decimal(10, 2) @map("line_total")
   cogs            Decimal                      @default(0) @db.Decimal(10, 2)
   profit          Decimal                      @default(0) @db.Decimal(10, 2)
@@ -193,6 +198,8 @@ model SalesInvoiceRefund {
   qtyInUnit      Decimal      @db.Decimal(12, 3) @map("qty_in_unit")
   qtyBase        Decimal      @db.Decimal(12, 3) @map("qty_base")
   refundAmount   Decimal      @db.Decimal(10, 2) @map("refund_amount")
+  subtotalAmount Decimal      @default(0) @db.Decimal(10, 2) @map("subtotal_amount")
+  discountReversed Decimal    @default(0) @db.Decimal(10, 2) @map("discount_reversed")
   cogsReversed   Decimal      @db.Decimal(10, 2) @map("cogs_reversed")
   profitReversed Decimal      @db.Decimal(10, 2) @map("profit_reversed")
   createdAt      DateTime     @default(now()) @map("created_at")

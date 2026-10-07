@@ -20,11 +20,15 @@ import {
 } from 'lucide-react';
 import QRCode from '../../../components/QRCode.js';
 
+const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
 export default function DedicatedCartPage() {
   const [cart, setCart] = useState([]);
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [paymentMode, setPaymentMode] = useState('UPI');
+  const [discountType, setDiscountType] = useState('PERCENT');
+  const [discountValue, setDiscountValue] = useState('0');
   const [upiAccounts, setUpiAccounts] = useState([]);
   const [selectedUpiId, setSelectedUpiId] = useState('');
   const [cashGiven, setCashGiven] = useState('');
@@ -68,13 +72,7 @@ export default function DedicatedCartPage() {
               ?? item.salePrice
               ?? 0
             );
-            const discountPercent = Number(product.discountPercent || 0);
-            const salePrice = Number(
-              unit?.discountedPrice
-              ?? (regularPrice * (1 - discountPercent / 100)).toFixed(2)
-            );
-
-            return { ...item, regularPrice, salePrice, discountPercent };
+            return { ...item, regularPrice, salePrice: regularPrice };
           });
 
           if (!cancelled) {
@@ -137,7 +135,20 @@ export default function DedicatedCartPage() {
     syncCart(updated);
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + Number(item.salePrice || 0) * Number(item.qtyInUnit || 0), 0);
+  const subtotal = roundMoney(cart.reduce((sum, item) => (
+    sum + roundMoney(Number(item.regularPrice ?? item.salePrice ?? 0) * Number(item.qtyInUnit || 0))
+  ), 0));
+  const discountValueNumber = Number(discountValue || 0);
+  const requestedDiscountAmount = Number.isFinite(discountValueNumber)
+    ? discountType === 'PERCENT'
+      ? subtotal * discountValueNumber / 100
+      : discountValueNumber
+    : 0;
+  const discountAmount = roundMoney(Math.min(subtotal, Math.max(0, requestedDiscountAmount)));
+  const discountIsValid = Number.isFinite(discountValueNumber)
+    && discountValueNumber >= 0
+    && (discountType === 'PERCENT' ? discountValueNumber <= 100 : requestedDiscountAmount <= subtotal);
+  const grandTotal = roundMoney(Math.max(0, subtotal - discountAmount));
 
   const handleCheckout = async (e) => {
     e.preventDefault();
@@ -146,8 +157,15 @@ export default function DedicatedCartPage() {
       return;
     }
 
-    if (paymentMode === 'CASH' && cashGiven && parseFloat(cashGiven) < subtotal) {
-      setError(`Cash received (₹${cashGiven}) is less than total amount (₹${subtotal.toFixed(2)})`);
+    if (!discountIsValid) {
+      setError(discountType === 'PERCENT'
+        ? 'Discount percentage must be between 0% and 100%.'
+        : `Discount cannot exceed subtotal (₹${subtotal.toFixed(2)}).`);
+      return;
+    }
+
+    if (paymentMode === 'CASH' && cashGiven && parseFloat(cashGiven) < grandTotal) {
+      setError(`Cash received (₹${cashGiven}) is less than total amount (₹${grandTotal.toFixed(2)})`);
       return;
     }
 
@@ -180,6 +198,8 @@ export default function DedicatedCartPage() {
           customerName: customerName.trim() || 'Guest Customer',
           phone: phone.trim() || undefined,
           paymentMode,
+          discountType,
+          discountValue: discountValueNumber,
           upiId: paymentMode === 'UPI' ? selectedUpiId : undefined,
           idempotencyKey,
         }),
@@ -199,7 +219,9 @@ export default function DedicatedCartPage() {
       setCompletedInvoice({
         ...invoice,
         invoiceNo,
-        totalAmount: Number(invoice.totalAmount ?? responseData.totalAmount ?? responseData.total ?? subtotal),
+        subtotal: Number(invoice.subtotal ?? responseData.subtotal ?? subtotal),
+        discountAmount: Number(invoice.discountAmount ?? responseData.discountAmount ?? discountAmount),
+        totalAmount: Number(invoice.totalAmount ?? responseData.totalAmount ?? responseData.total ?? grandTotal),
         paymentMode: invoice.paymentMode || paymentMode,
         customerName: invoice.customerName || customerName.trim() || 'Guest Customer',
         customerPhone: invoice.customerPhone || phone.trim(),
@@ -211,6 +233,7 @@ export default function DedicatedCartPage() {
       setCustomerName('');
       setPhone('');
       setCashGiven('');
+      setDiscountValue('0');
     } catch (err) {
       setError(err.message || 'Checkout failed');
     } finally {
@@ -475,14 +498,10 @@ export default function DedicatedCartPage() {
                           <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.95rem', overflowWrap: 'anywhere' }}>{item.nameEn}</div>
                           <div style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
                             {item.nameHi} • <span style={{ color: '#c2410c', fontWeight: 600 }}>{item.unitName}</span>
-                            {Number(item.discountPercent) > 0 && <span style={{ marginLeft: 6, color: '#b54708', fontWeight: 700 }}>{Number(item.discountPercent)}% off</span>}
                           </div>
                         </td>
                         <td style={{ color: '#334155', fontWeight: 600 }}>
-                          {Number(item.regularPrice) > Number(item.salePrice) && (
-                            <div style={{ color: '#94a3b8', fontSize: '0.78rem', fontWeight: 500, textDecoration: 'line-through' }}>₹{Number(item.regularPrice).toFixed(2)}</div>
-                          )}
-                          <span style={{ color: Number(item.regularPrice) > Number(item.salePrice) ? '#c2410c' : '#334155' }}>₹{Number(item.salePrice).toFixed(2)}</span>
+                          <span>₹{Number(item.regularPrice ?? item.salePrice).toFixed(2)}</span>
                         </td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -525,7 +544,7 @@ export default function DedicatedCartPage() {
                           </div>
                         </td>
                         <td style={{ color: '#c2410c', fontWeight: 800, fontSize: '1rem' }}>
-                          ₹{(item.salePrice * item.qtyInUnit).toFixed(2)}
+                          ₹{roundMoney(Number(item.regularPrice ?? item.salePrice) * item.qtyInUnit).toFixed(2)}
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <button
@@ -585,6 +604,31 @@ export default function DedicatedCartPage() {
                 </small>
               </div>
 
+              <div className="input-group" style={{ padding: '0.85rem', background: '#fffaf5', border: '1px solid #fed7aa', borderRadius: 12 }}>
+                <label htmlFor="cart-discount-value">Cart discount</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 0.85fr) minmax(0, 1.15fr)', gap: '0.6rem' }}>
+                  <select className="input-control" value={discountType} onChange={(e) => setDiscountType(e.target.value)} aria-label="Discount type">
+                    <option value="PERCENT">Percentage (%)</option>
+                    <option value="AMOUNT">Fixed amount (₹)</option>
+                  </select>
+                  <input
+                    id="cart-discount-value"
+                    type="number"
+                    min="0"
+                    max={discountType === 'PERCENT' ? 100 : subtotal}
+                    step="0.01"
+                    className="input-control"
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(e.target.value)}
+                    aria-label={discountType === 'PERCENT' ? 'Discount percentage' : 'Discount amount in rupees'}
+                  />
+                </div>
+                <small style={{ color: '#64748b', lineHeight: 1.4 }}>Applied once to the whole bill at checkout.</small>
+                {!discountIsValid && <small role="alert" style={{ color: '#be123c' }}>
+                  {discountType === 'PERCENT' ? 'Enter a discount between 0% and 100%.' : 'Discount cannot be more than the subtotal.'}
+                </small>}
+              </div>
+
               {/* Payment Method Selector */}
               <div className="input-group">
                 <label>Payment Method</label>
@@ -618,7 +662,7 @@ export default function DedicatedCartPage() {
               </div>
 
               {/* Dynamic Payment QR / Cash Inputs */}
-              {paymentMode === 'UPI' && cart.length > 0 && subtotal > 0 && (
+              {paymentMode === 'UPI' && cart.length > 0 && grandTotal > 0 && (
                 <div className="cart-qr-panel">
                   {upiAccounts.length > 0 && (
                     <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', background: '#fff', padding: '0.65rem', borderRadius: '8px', border: '1px solid #fed7aa' }}>
@@ -646,7 +690,7 @@ export default function DedicatedCartPage() {
                   <div style={{ margin: '0.5rem 0', display: 'flex', justifyContent: 'center' }}>
                     {selectedUpiId ? (
                       <QRCode
-                        value={`upi://pay?pa=${selectedUpiId}&pn=Shree%20Pooja%20Ghar&am=${subtotal.toFixed(2)}&cu=INR&tn=Bill%20Shree%20Pooja%20Ghar`}
+                        value={`upi://pay?pa=${selectedUpiId}&pn=Shree%20Pooja%20Ghar&am=${grandTotal.toFixed(2)}&cu=INR&tn=Bill%20Shree%20Pooja%20Ghar`}
                         size={140}
                       />
                     ) : (
@@ -673,28 +717,38 @@ export default function DedicatedCartPage() {
                       onChange={(e) => setCashGiven(e.target.value)}
                     />
                   </div>
-                  {cashGiven && parseFloat(cashGiven) >= subtotal && (
+                  {cashGiven && parseFloat(cashGiven) >= grandTotal && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', color: '#047857', fontWeight: 700 }}>
                       <span>Change to Return:</span>
-                      <span style={{ fontSize: '1.1rem' }}>₹{(parseFloat(cashGiven) - subtotal).toFixed(2)}</span>
+                      <span style={{ fontSize: '1.1rem' }}>₹{(parseFloat(cashGiven) - grandTotal).toFixed(2)}</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Total Calculation Row */}
+              <div style={{ display: 'grid', gap: '0.4rem', padding: '0.25rem 0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
+                  <span>Subtotal</span><strong>₹{subtotal.toFixed(2)}</strong>
+                </div>
+                {discountAmount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#047857' }}>
+                    <span>Bill discount</span><strong>−₹{discountAmount.toFixed(2)}</strong>
+                  </div>
+                )}
+              </div>
+
               <div className="cart-total-row">
                 <span style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>Grand Total</span>
-                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#c2410c' }}>₹{subtotal.toFixed(2)}</span>
+                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#c2410c' }}>₹{grandTotal.toFixed(2)}</span>
               </div>
 
               <button
                 type="submit"
                 className="btn btn-primary cart-submit-btn"
-                disabled={cart.length === 0 || loading}
+                disabled={cart.length === 0 || loading || !discountIsValid}
                 style={{ width: '100%', padding: '0.9rem', fontSize: '1.05rem', fontWeight: 800, borderRadius: 14 }}
               >
-                {loading ? 'Processing Order...' : `Complete Order (₹${subtotal.toFixed(2)})`}
+                {loading ? 'Processing Order...' : `Complete Order (₹${grandTotal.toFixed(2)})`}
               </button>
             </form>
           </div>
@@ -712,6 +766,16 @@ export default function DedicatedCartPage() {
             </p>
 
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '1rem', margin: '1.25rem 0', textAlign: 'left', fontSize: '0.88rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                <span style={{ color: '#475569' }}>Subtotal:</span>
+                <strong style={{ color: '#0f172a' }}>₹{Number(completedInvoice.subtotal || 0).toFixed(2)}</strong>
+              </div>
+              {Number(completedInvoice.discountAmount || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ color: '#475569' }}>Bill discount:</span>
+                  <strong style={{ color: '#047857' }}>−₹{Number(completedInvoice.discountAmount).toFixed(2)}</strong>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                 <span style={{ color: '#475569' }}>Total Paid:</span>
                 <strong style={{ color: '#047857', fontSize: '1rem' }}>₹{Number(completedInvoice.totalAmount || 0).toFixed(2)}</strong>

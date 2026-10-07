@@ -33,6 +33,16 @@ export const checkoutSchema = z.object({
   items: z
     .array(checkoutItemSchema)
     .min(1, 'At least one item is required'),
+  discountType: z.enum(['PERCENT', 'AMOUNT']).optional(),
+  discountValue: z.number().finite().min(0, 'Discount cannot be negative').optional(),
+}).superRefine((checkout, ctx) => {
+  if (checkout.discountType === 'PERCENT' && Number(checkout.discountValue || 0) > 100) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['discountValue'],
+      message: 'Percentage discount cannot exceed 100%',
+    });
+  }
 });
 
 export const validateCheckout = (req, res, next) => {

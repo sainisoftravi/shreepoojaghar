@@ -86,7 +86,7 @@ export default function InvoicesPage() {
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>Sales Invoices</h1>
-          <p style={styles.subtitle}>Historical transactions, locked profits & WhatsApp status</p>
+          <p style={styles.subtitle}>{user?.role === 'ADMIN' ? 'Historical transactions, locked profits & WhatsApp status' : 'Historical transactions & WhatsApp status'}</p>
         </div>
       </div>
 
@@ -100,7 +100,7 @@ export default function InvoicesPage() {
               <th>Date & Time</th>
               <th>Payment Mode</th>
               <th>Total Amount</th>
-              <th>Profit Locked</th>
+              {user?.role === 'ADMIN' && <th>Profit Locked</th>}
               <th>WhatsApp Status</th>
               {user?.role === 'ADMIN' && <th>Action</th>}
             </tr>
@@ -129,11 +129,13 @@ export default function InvoicesPage() {
                     ₹{Number(inv.totalAmount).toFixed(2)}
                   </strong>
                 </td>
-                <td>
-                  <strong style={{ color: '#187653' }}>
-                    ₹{Number(inv.totalProfit).toFixed(2)}
-                  </strong>
-                </td>
+                {user?.role === 'ADMIN' && (
+                  <td>
+                    <strong style={{ color: '#187653' }}>
+                      ₹{Number(inv.totalProfit).toFixed(2)}
+                    </strong>
+                  </td>
+                )}
                 <td>
                   <span
                     className={`badge ${
@@ -201,11 +203,12 @@ export default function InvoicesPage() {
                   <div>
                     <div style={{ fontWeight: '700' }}>{item.productName}</div>
                     <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      Unit Cost: ₹{Number(item.unitCost).toFixed(2)} | Sale: ₹{Number(item.unitSalePrice).toFixed(2)}
+                      {user?.role === 'ADMIN' && `Unit Cost: ₹${Number(item.unitCost).toFixed(2)} | `}
+                      Sale: ₹{Number(item.unitSalePrice).toFixed(2)}
                     </div>
                   </div>
                   <div>
-                    x{item.quantity} = <strong>₹{(Number(item.unitSalePrice) * item.quantity).toFixed(2)}</strong>
+                    x{Number(item.qtyInUnit ?? item.quantity)} {item.unitName || ''} = <strong>₹{Number(item.grossLineTotal ?? item.unitSalePrice * item.quantity).toFixed(2)}</strong>
                   </div>
                 </div>
               ))}
@@ -213,17 +216,29 @@ export default function InvoicesPage() {
 
             <div style={styles.summaryBox}>
               <div style={styles.sumRow}>
+                <span>Subtotal:</span>
+                <strong>₹{Number(selectedInvoice.subtotal ?? selectedInvoice.totalAmount).toFixed(2)}</strong>
+              </div>
+              {Number(selectedInvoice.discountAmount || 0) > 0 && (
+                <div style={styles.sumRow}>
+                  <span>Bill discount:</span>
+                  <strong style={{ color: '#047857' }}>−₹{Number(selectedInvoice.discountAmount).toFixed(2)}</strong>
+                </div>
+              )}
+              <div style={styles.sumRow}>
                 <span>Total Amount:</span>
                 <span style={{ fontSize: '1.2rem', color: '#b95117', fontWeight: '800' }}>
                   ₹{Number(selectedInvoice.totalAmount).toFixed(2)}
                 </span>
               </div>
-              <div style={styles.sumRow}>
-                <span>Profit Earned:</span>
-                <span style={{ color: '#187653', fontWeight: '800' }}>
-                  ₹{Number(selectedInvoice.totalProfit).toFixed(2)}
-                </span>
-              </div>
+              {user?.role === 'ADMIN' && (
+                <div style={styles.sumRow}>
+                  <span>Profit Earned:</span>
+                  <span style={{ color: '#187653', fontWeight: '800' }}>
+                    ₹{Number(selectedInvoice.totalProfit).toFixed(2)}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div style={styles.modalActions}>

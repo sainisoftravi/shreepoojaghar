@@ -37,9 +37,6 @@ export const resendWhatsAppInvoice = async (req, res, next) => {
     try {
       await whatsappQueue.add('send-invoice', {
         invoiceId: invoice.id,
-        invoiceNo: invoice.invoiceNo,
-        customerPhone: invoice.customerPhone,
-        customerName: invoice.customerName,
       });
     } catch (error) {
       await invoiceService.markWaFailed(invoice.id).catch((statusError) =>

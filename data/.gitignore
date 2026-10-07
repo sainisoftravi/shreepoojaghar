@@ -1,0 +1,3 @@
+# Keep database files local; never commit persisted Postgres or Redis data.
+*
+!.gitignore

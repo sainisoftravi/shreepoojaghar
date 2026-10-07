@@ -131,14 +131,23 @@ const buildReceiptCaption = (invoice) => {
     timeStyle: 'short',
   });
 
-  return `🙏 *Shree Pooja Ghar - Purchase invoice*
-Invoice: ${invoice.invoiceNo}
-Date: ${date}
-Customer: ${invoice.customerName || 'Guest Customer'}
-Total: ₹${Number(invoice.totalAmount).toFixed(2)}
-Payment: ${invoice.paymentMode || 'Other'}
-
-Your itemized PDF invoice is attached. Thank you for shopping with us.`;
+  const lines = [
+    '🙏 *Shree Pooja Ghar - Purchase invoice*',
+    `Invoice: ${invoice.invoiceNo}`,
+    `Date: ${date}`,
+    `Customer: ${invoice.customerName || 'Guest Customer'}`,
+    `Subtotal: ₹${Number(invoice.subtotal ?? invoice.totalAmount).toFixed(2)}`,
+  ];
+  if (Number(invoice.discountAmount || 0) > 0) {
+    lines.push(`Cart discount: −₹${Number(invoice.discountAmount).toFixed(2)}`);
+  }
+  lines.push(
+    `Total: ₹${Number(invoice.totalAmount).toFixed(2)}`,
+    `Payment: ${invoice.paymentMode || 'Other'}`,
+    '',
+    'Your itemized PDF invoice is attached. Thank you for shopping with us.'
+  );
+  return lines.join('\n');
 };
 
 const getWhatsAppChatId = (phone) => {
@@ -198,7 +207,7 @@ export const sendWhatsAppInvoice = async (invoice) => {
   await client.sendMessage(chatId, media, { caption });
 
   logger.info(
-    { invoiceNo: invoice.invoiceNo, phone: invoice.customerPhone },
+    { invoiceNo: invoice.invoiceNo },
     '✅ WhatsApp invoice PDF sent'
   );
 };

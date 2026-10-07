@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { decryptCustomerPii, decryptInvoicePii } from '../utils/customer-privacy.js';
 
 const prisma = new PrismaClient();
 
@@ -98,7 +99,7 @@ export const getDashboard = async () => {
       invoiceCount,
     },
     totalCustomers,
-    recentInvoices,
+    recentInvoices: recentInvoices.map(decryptInvoicePii),
     lowStock,
     topSellers: topSellers.map((t) => ({
       productId: t.productId,
@@ -122,5 +123,5 @@ export const getCustomerLTV = async ({ limit = 20, page = 1 } = {}) => {
     prisma.customer.count(),
   ]);
 
-  return { customers, total, page, limit };
+  return { customers: customers.map(decryptCustomerPii), total, page, limit };
 };

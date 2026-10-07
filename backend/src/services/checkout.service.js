@@ -1,5 +1,12 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import crypto from 'crypto';
+import {
+  decryptCustomerPii,
+  decryptInvoicePii,
+  encryptPii,
+  getCustomerPhoneLookup,
+  hashCheckoutRequest,
+} from '../utils/customer-privacy.js';
 
 const Decimal = Prisma.Decimal;
 import { computeFIFO, calcLineProfit } from './fifo.service.js';
@@ -15,7 +22,7 @@ const prisma = new PrismaClient();
 /**
  * Computes deterministic request hash for idempotency cart payload check.
  */
-export const computeRequestHash = (items, customerName = '', phone = '', paymentMode = '') => {
+const serializeRequestForHash = (items, customerName = '', phone = '', paymentMode = '', discountType = 'AMOUNT', discountValue = 0) => {
   const sortedLines = items
     .map((i) => ({
       productId: i.productId,
@@ -24,27 +31,74 @@ export const computeRequestHash = (items, customerName = '', phone = '', payment
     }))
     .sort((a, b) => (a.productId + a.unitId).localeCompare(b.productId + b.unitId));
 
-  const rawStr = JSON.stringify({
+  const requestPayload = {
     customerName: customerName.trim(),
     phone: phone.trim(),
     paymentMode: paymentMode.trim(),
     lines: sortedLines,
-  });
+  };
+  if (Number(discountValue) > 0) {
+    requestPayload.discountType = discountType;
+    requestPayload.discountValue = Number(discountValue);
+  }
+  return JSON.stringify(requestPayload);
+};
 
-  return crypto.createHash('sha256').update(rawStr).digest('hex');
+export const computeRequestHash = (items, customerName = '', phone = '', paymentMode = '', discountType = 'AMOUNT', discountValue = 0) => {
+  return hashCheckoutRequest(serializeRequestForHash(items, customerName, phone, paymentMode, discountType, discountValue));
+};
+
+const computeLegacyRequestHash = (items, customerName = '', phone = '', paymentMode = '', discountType = 'AMOUNT', discountValue = 0) => {
+  return crypto.createHash('sha256')
+    .update(serializeRequestForHash(items, customerName, phone, paymentMode, discountType, discountValue))
+    .digest('hex');
+};
+
+const matchesRequestHash = (savedHash, currentHash, legacyHash) => (
+  !savedHash || savedHash === currentHash || savedHash === legacyHash
+);
+
+const presentCheckoutResult = (result) => ({
+  ...result,
+  invoice: decryptInvoicePii(result.invoice),
+  ...(result.customer ? { customer: decryptCustomerPii(result.customer) } : {}),
+});
+
+const requestHashError = () => new ConflictError('Idempotency key reused with different cart request payload');
+
+const requireMatchingRequestHash = (invoice, currentHash, legacyHash) => {
+  if (!matchesRequestHash(invoice.requestHash, currentHash, legacyHash)) throw requestHashError();
 };
 
 /**
  * POS Checkout — Multi-Unit, Idempotent, FOR UPDATE Locked FIFO Transaction Engine.
  */
-export const checkout = async ({ idempotencyKey, customerName, phone, paymentMode, items }) => {
+export const checkout = async ({ idempotencyKey, customerName, phone, paymentMode, items, discountType = 'AMOUNT', discountValue = 0 }) => {
   const normalizedPhone = normalizePhone(phone);
 
   if (!items || !Array.isArray(items) || items.length === 0) {
     throw new ValidationError('Cart cannot be empty');
   }
 
-  const currentRequestHash = computeRequestHash(items, customerName, phone, paymentMode);
+  const normalizedDiscountType = String(discountType || 'AMOUNT').toUpperCase();
+  if (!['AMOUNT', 'PERCENT'].includes(normalizedDiscountType)) {
+    throw new ValidationError('Discount type must be amount or percentage');
+  }
+  let discountValueDec;
+  try {
+    discountValueDec = new Decimal((discountValue ?? 0).toString()).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  } catch {
+    throw new ValidationError('Discount must be a valid number');
+  }
+  if (!discountValueDec.isFinite() || discountValueDec.isNegative()) {
+    throw new ValidationError('Discount must be zero or greater');
+  }
+  if (normalizedDiscountType === 'PERCENT' && discountValueDec.gt(100)) {
+    throw new ValidationError('Percentage discount cannot exceed 100%');
+  }
+
+  const currentRequestHash = computeRequestHash(items, customerName, phone, paymentMode, normalizedDiscountType, discountValueDec.toNumber());
+  const legacyRequestHash = computeLegacyRequestHash(items, customerName, phone, paymentMode, normalizedDiscountType, discountValueDec.toNumber());
 
   // Fast check idempotency before transaction
   if (idempotencyKey) {
@@ -53,11 +107,9 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
       include: { items: true },
     });
     if (existingInvoice) {
-      if (existingInvoice.requestHash && existingInvoice.requestHash !== currentRequestHash) {
-        throw new ConflictError('Idempotency key reused with different cart request payload');
-      }
+      requireMatchingRequestHash(existingInvoice, currentRequestHash, legacyRequestHash);
       logger.info({ idempotencyKey, invoiceNo: existingInvoice.invoiceNo }, 'Idempotent checkout hit: returning existing invoice');
-      return { invoice: existingInvoice, isDuplicate: true };
+      return presentCheckoutResult({ invoice: existingInvoice, isDuplicate: true });
     }
   }
 
@@ -75,9 +127,7 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
               include: { items: true },
             });
             if (existingTxInvoice) {
-              if (existingTxInvoice.requestHash && existingTxInvoice.requestHash !== currentRequestHash) {
-                throw new ConflictError('Idempotency key reused with different cart request payload');
-              }
+              requireMatchingRequestHash(existingTxInvoice, currentRequestHash, legacyRequestHash);
               return { invoice: existingTxInvoice, isDuplicate: true };
             }
           }
@@ -87,7 +137,7 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
 
           // 1. Pessimistic Row Lock on Products in deterministic order (ORDER BY id ASC)
           const lockedProducts = await tx.$queryRaw`
-            SELECT id, name_en, base_unit, allow_decimal_qty, low_stock_threshold, total_stock_base, discount_percent
+            SELECT id, name_en, base_unit, allow_decimal_qty, low_stock_threshold, total_stock_base
             FROM products
             WHERE id IN (${Prisma.join(rawProductIds)})
             ORDER BY id ASC
@@ -114,7 +164,6 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
               allowDecimalQty: p.allow_decimal_qty,
               lowStockThreshold: p.low_stock_threshold,
               totalStockBase: p.total_stock_base,
-              discountPercent: p.discount_percent,
               units: units.filter((u) => u.productId === p.id),
             };
           }
@@ -182,12 +231,6 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
               const fallbackPrice = item.regularPrice ?? item.salePrice;
               unitPriceDec = new Decimal(fallbackPrice.toString());
             }
-            const discountPercentDec = new Decimal(product.discountPercent?.toString() || '0');
-            unitPriceDec = unitPriceDec
-              .mul(new Decimal(100).minus(discountPercentDec))
-              .div(100)
-              .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-
             const lineTotalDec = unitPriceDec.mul(qtyInUnitDec).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
             // FIFO stock allocation
@@ -212,12 +255,48 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
               qtyInUnit: qtyInUnitDec.toNumber(),
               qtyBase: qtyBaseDec.toNumber(),
               unitPrice: unitPriceDec.toNumber(),
+              grossLineTotal: lineTotalDec.toNumber(),
+              discountAmount: 0,
               lineTotal: lineTotalDec.toNumber(),
               cogs: totalCogsDec.toNumber(),
+              grossProfit: lineProfitDec.toNumber(),
               profit: lineProfitDec.toNumber(),
               allocations,
             });
           }
+
+          const subtotalDec = totalAmountDec.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+          const discountAmountDec = normalizedDiscountType === 'PERCENT'
+            ? subtotalDec.mul(discountValueDec).div(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+            : discountValueDec;
+          if (discountAmountDec.gt(subtotalDec)) {
+            throw new ValidationError('Cart discount cannot exceed the subtotal');
+          }
+
+          let remainingDiscountDec = discountAmountDec;
+          lineItems.forEach((line, index) => {
+            const isLastLine = index === lineItems.length - 1;
+            const calculatedDiscountDec = isLastLine
+              ? remainingDiscountDec
+              : subtotalDec.isZero()
+                ? new Decimal(0)
+                : discountAmountDec
+                  .mul(new Decimal(line.grossLineTotal.toString()))
+                  .div(subtotalDec)
+                  .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+            const allocatedDiscountDec = Decimal.min(calculatedDiscountDec, remainingDiscountDec);
+
+            line.discountAmount = allocatedDiscountDec.toNumber();
+            line.lineTotal = new Decimal(line.grossLineTotal.toString()).minus(allocatedDiscountDec).toNumber();
+            line.profit = new Decimal(line.grossProfit.toString()).minus(allocatedDiscountDec).toNumber();
+            remainingDiscountDec = remainingDiscountDec.minus(allocatedDiscountDec);
+          });
+
+          totalAmountDec = subtotalDec.minus(discountAmountDec).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+          totalProfitDec = lineItems.reduce(
+            (sum, line) => sum.add(new Decimal(line.profit.toString())),
+            new Decimal(0)
+          ).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
           // 3. Atomically update stock batches and products
           for (const line of lineItems) {
@@ -259,8 +338,10 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
               invoiceNo,
               idempotencyKey: idempotencyKey || null,
               requestHash: currentRequestHash,
-              customerName,
-              customerPhone: normalizedPhone,
+              customerName: encryptPii(customerName),
+              customerPhone: encryptPii(normalizedPhone),
+              subtotal: subtotalDec.toFixed(2),
+              discountAmount: discountAmountDec.toFixed(2),
               totalAmount: totalAmountDec.toFixed(2),
               totalProfit: totalProfitDec.toFixed(2),
               paymentMode,
@@ -274,6 +355,8 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
                   qtyInUnit: line.qtyInUnit,
                   qtyBase: line.qtyBase,
                   unitPrice: line.unitPrice,
+                  grossLineTotal: line.grossLineTotal,
+                  discountAmount: line.discountAmount,
                   lineTotal: line.lineTotal,
                   cogs: line.cogs,
                   profit: line.profit,
@@ -306,18 +389,19 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
             const lastCategory = firstProduct?.categoryId || null;
 
             customer = await tx.customer.upsert({
-              where: { phone: normalizedPhone },
+              where: { phoneLookup: getCustomerPhoneLookup(normalizedPhone) },
               update: {
-                name: customerName,
+                name: encryptPii(customerName),
                 lifetimeSpend: { increment: totalAmountDec.toNumber() },
                 totalOrders: { increment: 1 },
                 lastPurchase: new Date(),
                 lastCategory,
               },
               create: {
-                phone: normalizedPhone,
-                name: customerName,
-                firstName: customerName?.split(' ')[0] || null,
+                phone: encryptPii(normalizedPhone),
+                phoneLookup: getCustomerPhoneLookup(normalizedPhone),
+                name: encryptPii(customerName),
+                firstName: encryptPii(customerName?.split(' ')[0] || null),
                 lifetimeSpend: totalAmountDec.toNumber(),
                 totalOrders: 1,
                 lastPurchase: new Date(),
@@ -359,7 +443,7 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
   };
 
   try {
-    return await executeTx(1);
+    return presentCheckoutResult(await executeTx(1));
   } catch (err) {
     // Catch idempotency key unique constraint violation OUTSIDE the aborted transaction
     if (idempotencyKey && (err.code === 'P2002' || err.message?.includes('idempotency_key'))) {
@@ -368,10 +452,8 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
         include: { items: true },
       });
       if (existingInvoice) {
-        if (existingInvoice.requestHash && existingInvoice.requestHash !== currentRequestHash) {
-          throw new ConflictError('Idempotency key reused with different cart request payload');
-        }
-        return { invoice: existingInvoice, isDuplicate: true };
+        requireMatchingRequestHash(existingInvoice, currentRequestHash, legacyRequestHash);
+        return presentCheckoutResult({ invoice: existingInvoice, isDuplicate: true });
       }
     }
     throw err;

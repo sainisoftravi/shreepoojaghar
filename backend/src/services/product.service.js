@@ -19,8 +19,6 @@ const formatProductForResponse = (product) => {
       ? Number(latestBatch.costPerBase)
       : Number(latestBatch.purchaseCost || 0)
     : 0;
-  const discountPercent = Math.min(100, Math.max(0, Number(product.discountPercent || 0)));
-
   // Compute calculated selling prices for all units
   const unitsWithPrices = (product.units || []).map((u) => {
     const factorToBase = Number(u.factorToBase || 1);
@@ -33,10 +31,8 @@ const formatProductForResponse = (product) => {
       marginPercent,
       priceOverride,
     });
-    const discountedPrice = roundMoney(sellingPrice * (1 - discountPercent / 100));
-
     const unitCost = roundMoney(costPerBase * factorToBase);
-    const profitPerUnit = roundMoney(discountedPrice - unitCost);
+    const profitPerUnit = roundMoney(sellingPrice - unitCost);
 
     return {
       id: u.id,
@@ -53,7 +49,6 @@ const formatProductForResponse = (product) => {
       barcode: u.barcode,
       sortOrder: u.sortOrder,
       sellingPrice,
-      discountedPrice,
       unitCost,
       profitPerUnit,
     };
@@ -61,7 +56,6 @@ const formatProductForResponse = (product) => {
 
   return {
     ...product,
-    discountPercent,
     totalStockBase,
     totalAvailableStock: Math.floor(totalStockBase),
     formattedStock: formatStock(totalStockBase, { baseUnit: product.baseUnit, units: product.units }),
@@ -200,17 +194,12 @@ export const createProduct = async (data) => {
     baseUnit = 'piece',
     allowDecimalQty = false,
     lowStockThreshold = 0,
-    discountPercent = 0,
     minAlertQty = 0,
     units = [],
   } = data;
 
   if (!nameEn) {
     throw new ValidationError('English product name is required');
-  }
-
-  if (!Number.isFinite(Number(discountPercent)) || Number(discountPercent) < 0 || Number(discountPercent) > 100) {
-    throw new ValidationError('Product discount must be between 0 and 100 percent');
   }
 
   if (barcode) {
@@ -228,7 +217,6 @@ export const createProduct = async (data) => {
         baseUnit: baseUnit || 'piece',
         allowDecimalQty: Boolean(allowDecimalQty),
         lowStockThreshold: Number(lowStockThreshold || minAlertQty || 0),
-        discountPercent: Number(discountPercent || 0),
         minAlertQty: parseInt(minAlertQty || lowStockThreshold || 0),
       },
     });
@@ -309,13 +297,6 @@ export const updateProduct = async (id, data) => {
     if (data.baseUnit !== undefined) updateData.baseUnit = data.baseUnit;
     if (data.allowDecimalQty !== undefined) updateData.allowDecimalQty = Boolean(data.allowDecimalQty);
     if (data.lowStockThreshold !== undefined) updateData.lowStockThreshold = Number(data.lowStockThreshold);
-    if (data.discountPercent !== undefined) {
-      const discountPercent = Number(data.discountPercent);
-      if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
-        throw new ValidationError('Product discount must be between 0 and 100 percent');
-      }
-      updateData.discountPercent = discountPercent;
-    }
     if (data.minAlertQty !== undefined) updateData.minAlertQty = parseInt(data.minAlertQty);
 
     await tx.product.update({
@@ -389,33 +370,6 @@ export const updateProduct = async (id, data) => {
     invalidateProductCache();
     return formatProductForResponse(updatedProduct);
   });
-};
-
-export const updateProductDiscount = async (id, discountPercent) => {
-  const value = Number(discountPercent);
-  if (!Number.isFinite(value) || value < 0 || value > 100) {
-    throw new ValidationError('Product discount must be between 0 and 100 percent');
-  }
-
-  try {
-    const product = await prisma.product.update({
-      where: { id },
-      data: { discountPercent: value },
-      include: {
-        category: true,
-        units: { orderBy: { sortOrder: 'asc' } },
-        batches: {
-          where: { OR: [{ qtyRemainingBase: { gt: 0 } }, { currentStock: { gt: 0 } }] },
-          orderBy: { receivedAt: 'asc' },
-        },
-      },
-    });
-    invalidateProductCache();
-    return formatProductForResponse(product);
-  } catch (error) {
-    if (error.code === 'P2025') throw new NotFoundError('Product not found');
-    throw error;
-  }
 };
 
 export const deleteProduct = async (id) => {

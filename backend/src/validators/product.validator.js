@@ -8,26 +8,7 @@ export const productSchema = z.object({
   categoryId: z.string().uuid('Invalid Category ID'),
   unit: z.string().optional(),
   minAlertQty: z.number().int().min(0, 'minAlertQty must be 0 or positive').default(0),
-  discountPercent: z.number().min(0).max(100, 'Discount cannot exceed 100%').optional(),
 });
-
-export const productDiscountSchema = z.object({
-  discountPercent: z.number().finite().min(0, 'Discount cannot be negative').max(100, 'Discount cannot exceed 100%'),
-});
-
-export const validateProductDiscount = (req, res, next) => {
-  try {
-    productDiscountSchema.parse(req.body);
-    next();
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      const messages = error.errors.map((err) => err.message).join(', ');
-      next(new ValidationError(messages));
-    } else {
-      next(error);
-    }
-  }
-};
 
 export const validateProduct = (req, res, next) => {
   try {

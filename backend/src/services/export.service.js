@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { decryptCustomerPii } from '../utils/customer-privacy.js';
 
 const prisma = new PrismaClient();
 
@@ -33,7 +34,7 @@ export const getCustomersForExport = async (segment = 'all', minSpend = 0) => {
     },
   });
 
-  return customers;
+  return customers.map(decryptCustomerPii);
 };
 
 /**

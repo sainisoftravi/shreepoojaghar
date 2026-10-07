@@ -15,6 +15,20 @@ const escapeHtml = (value = '') => String(value)
   .replace(/'/g, '&#39;');
 
 const formatMoney = (value) => `₹${Number(value || 0).toFixed(2)}`;
+const getItemGrossTotal = (item) => {
+  const grossLineTotal = Number(item.grossLineTotal);
+  if (item.grossLineTotal !== undefined && item.grossLineTotal !== null && Number.isFinite(grossLineTotal)) {
+    return grossLineTotal;
+  }
+  const lineTotal = Number(item.lineTotal);
+  return Number.isFinite(lineTotal) ? lineTotal : Number(item.unitPrice ?? item.unitSalePrice ?? 0) * Number(item.qtyInUnit ?? item.quantity ?? 1);
+};
+const getInvoiceSubtotal = (invoice, items) => {
+  const subtotal = Number(invoice.subtotal);
+  return invoice.subtotal !== undefined && invoice.subtotal !== null && Number.isFinite(subtotal)
+    ? subtotal
+    : items.reduce((sum, item) => sum + getItemGrossTotal(item), 0);
+};
 
 export const generateReceiptPDF = async (invoice) => {
   const createdAt = new Date(invoice.createdAt || Date.now());
@@ -25,8 +39,10 @@ export const generateReceiptPDF = async (invoice) => {
   const timeLabel = date.toLocaleTimeString('en-IN', {
     timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit',
   });
-  const total = Number(invoice.totalAmount || 0);
   const items = Array.isArray(invoice.items) ? invoice.items : [];
+  const subtotal = getInvoiceSubtotal(invoice, items);
+  const discountAmount = Number(invoice.discountAmount || 0);
+  const total = Number(invoice.totalAmount || 0);
   const paymentLabels = { CASH: 'Cash', UPI: 'UPI', CARD: 'Card', KHATA: 'Khata' };
   const paymentMode = paymentLabels[String(invoice.paymentMode || '').toUpperCase()] || 'Other';
   const storeName = escapeHtml(process.env.STORE_NAME || 'Shree Pooja Ghar');
@@ -44,8 +60,7 @@ export const generateReceiptPDF = async (invoice) => {
     const qty = Number(item.qtyInUnit ?? item.quantity ?? 1);
     const unitName = item.unitName ? ` ${escapeHtml(item.unitName)}` : '';
     const unitPrice = Number(item.unitPrice ?? item.unitSalePrice ?? 0);
-    const rawLineTotal = Number(item.lineTotal);
-    const lineTotal = Number.isFinite(rawLineTotal) ? rawLineTotal : unitPrice * qty;
+    const lineTotal = getItemGrossTotal(item);
 
     return `
       <tr>
@@ -143,7 +158,8 @@ export const generateReceiptPDF = async (invoice) => {
 
       <section class="summary">
         <div class="totals">
-          <div class="total-row"><span>Subtotal</span><strong>${formatMoney(total)}</strong></div>
+          <div class="total-row"><span>Subtotal</span><strong>${formatMoney(subtotal)}</strong></div>
+          ${discountAmount > 0 ? `<div class="total-row"><span>Cart discount</span><strong>−${formatMoney(discountAmount)}</strong></div>` : ''}
           <div class="total-row grand"><span>Total</span><strong>${formatMoney(total)}</strong></div>
         </div>
       </section>
@@ -192,6 +208,9 @@ export const generateThermalReceiptHTML = (invoice) => {
     timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit',
   });
   const total = Number(invoice.totalAmount || 0);
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  const subtotal = getInvoiceSubtotal(invoice, items);
+  const discountAmount = Number(invoice.discountAmount || 0);
   const storeName = escapeHtml(process.env.STORE_NAME || 'Shree Pooja Ghar');
   const storeAddress = process.env.STORE_ADDRESS
     ? `<div>${escapeHtml(process.env.STORE_ADDRESS)}</div>`
@@ -205,13 +224,9 @@ export const generateThermalReceiptHTML = (invoice) => {
   const paymentLabels = { CASH: 'Cash', UPI: 'UPI', CARD: 'Card', KHATA: 'Khata' };
   const paymentMode = paymentLabels[String(invoice.paymentMode || '').toUpperCase()]
     || escapeHtml(invoice.paymentMode || 'Other');
-  const items = Array.isArray(invoice.items) ? invoice.items : [];
-
   const itemRows = items.map((item) => {
     const quantity = Number(item.qtyInUnit ?? item.quantity ?? 1);
-    const unitPrice = Number(item.unitSalePrice ?? item.unitPrice ?? 0);
-    const rawLineTotal = Number(item.lineTotal);
-    const amount = Number.isFinite(rawLineTotal) ? rawLineTotal : unitPrice * quantity;
+    const amount = getItemGrossTotal(item);
     return `
       <div class="item-row">
         <span class="item-name">${escapeHtml(item.productName || 'Product')}${item.unitName ? `<small class="item-unit">${escapeHtml(item.unitName)}</small>` : ''}</span>
@@ -270,7 +285,8 @@ export const generateThermalReceiptHTML = (invoice) => {
       <div class="rule"></div>
 
       <section class="totals">
-        <div class="totals-row"><span>Subtotal</span><strong>Rs ${total.toFixed(2)}</strong></div>
+        <div class="totals-row"><span>Subtotal</span><strong>Rs ${subtotal.toFixed(2)}</strong></div>
+        ${discountAmount > 0 ? `<div class="totals-row"><span>Cart discount</span><strong>- Rs ${discountAmount.toFixed(2)}</strong></div>` : ''}
         <div class="totals-row total"><span>TOTAL</span><strong>Rs ${total.toFixed(2)}</strong></div>
         <div class="totals-row payment"><span>${paymentMode}</span><strong>Rs ${total.toFixed(2)}</strong></div>
       </section>

@@ -1,19 +1,22 @@
 import { PrismaClient } from '@prisma/client';
+import { decryptInvoicePii } from '../utils/customer-privacy.js';
 
 const prisma = new PrismaClient();
 
 export const getInvoiceById = async (id) => {
-  return await prisma.salesInvoice.findUnique({
+  const invoice = await prisma.salesInvoice.findUnique({
     where: { id },
     include: { items: true, customer: true },
   });
+  return decryptInvoicePii(invoice);
 };
 
 export const getInvoiceByNumber = async (invoiceNo) => {
-  return await prisma.salesInvoice.findUnique({
+  const invoice = await prisma.salesInvoice.findUnique({
     where: { invoiceNo },
     include: { items: true, customer: true },
   });
+  return decryptInvoicePii(invoice);
 };
 
 export const listInvoices = async ({ page = 1, limit = 20 } = {}) => {
@@ -27,7 +30,7 @@ export const listInvoices = async ({ page = 1, limit = 20 } = {}) => {
     }),
     prisma.salesInvoice.count(),
   ]);
-  return { invoices, total, page, limit };
+  return { invoices: invoices.map(decryptInvoicePii), total, page, limit };
 };
 
 export const markWaQueued = async (invoiceId) => {
@@ -96,9 +99,10 @@ export const cancelInvoice = async (invoiceId) => {
     }
 
     // Delete or mark invoice as cancelled
-    return await tx.salesInvoice.delete({
+    const deletedInvoice = await tx.salesInvoice.delete({
       where: { id: invoiceId },
     });
+    return decryptInvoicePii(deletedInvoice);
   });
 };
 
@@ -136,6 +140,8 @@ export const refundInvoiceItem = async (invoiceItemId) => {
       where: { id: item.invoiceId },
       data: {
         totalAmount: { decrement: item.lineTotal },
+        subtotal: { decrement: item.grossLineTotal },
+        discountAmount: { decrement: item.discountAmount },
         totalProfit: { decrement: item.profit },
       },
     });

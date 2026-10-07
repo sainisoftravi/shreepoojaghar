@@ -17,7 +17,6 @@ export default function AddProductPage() {
   const [allowDecimalQty, setAllowDecimalQty] = useState(false);
   const [barcode, setBarcode] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState(10);
-  const [discountPercent, setDiscountPercent] = useState('0');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
 
@@ -101,7 +100,6 @@ export default function AddProductPage() {
           baseUnit,
           allowDecimalQty,
           lowStockThreshold: parseFloat(lowStockThreshold) || 0,
-          discountPercent: parseFloat(discountPercent) || 0,
           barcode: barcode.trim() || undefined,
           units: units.map((u, i) => ({
             ...u,
@@ -437,26 +435,6 @@ export default function AddProductPage() {
                   value={lowStockThreshold}
                   onChange={(e) => setLowStockThreshold(e.target.value)}
                 />
-              </div>
-            </div>
-
-            <div className="form-grid-2" style={{ marginTop: '1.25rem' }}>
-              <div className="input-group">
-                <label htmlFor="product-discount-percent">Product discount (%)</label>
-                <input
-                  id="product-discount-percent"
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  className="input-control"
-                  placeholder="0"
-                  value={discountPercent}
-                  onChange={(e) => setDiscountPercent(e.target.value)}
-                />
-                <small style={{ color: '#64748b', lineHeight: 1.45 }}>
-                  Applied to every selling unit. POS shows the regular price and discounted price.
-                </small>
               </div>
             </div>
 

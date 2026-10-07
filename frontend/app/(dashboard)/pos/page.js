@@ -416,22 +416,16 @@ export default function POSPage() {
                   ...activeUnitObj,
                   unitName: activeUnitObj.unitName || activeUnitObj.nameEn || product.baseUnit,
                   regularPrice: Number(activeUnitObj.sellingPrice ?? activeUnitObj.salePrice ?? 0),
-                  salePrice: Number(activeUnitObj.discountedPrice ?? (
-                    Number(activeUnitObj.sellingPrice ?? activeUnitObj.salePrice ?? 0)
-                    * (1 - Number(product.discountPercent || 0) / 100)
-                  )),
+                  salePrice: Number(activeUnitObj.sellingPrice ?? activeUnitObj.salePrice ?? 0),
                 }
               : {
                   unitName: product.unit || product.baseUnit || 'Pcs',
                   regularPrice: Number(product.batches?.[0]?.sellingPrice || 0),
-                  salePrice: Number(product.batches?.[0]?.sellingPrice || 0) * (1 - Number(product.discountPercent || 0) / 100),
+                  salePrice: Number(product.batches?.[0]?.sellingPrice || 0),
                   factorToBase: 1,
                 };
 
             const unitPrice = Number(activeUnit.salePrice || 0);
-            const regularUnitPrice = Number(activeUnit.regularPrice ?? unitPrice);
-            const discountPercent = Number(product.discountPercent || 0);
-            const hasDiscount = discountPercent > 0 && regularUnitPrice > unitPrice;
 
             return (
               <div
@@ -453,13 +447,6 @@ export default function POSPage() {
                   {isOutOfStock && (
                     <div style={{ position: 'absolute', top: '1rem', right: '1rem' }}>
                       <span className="badge badge-danger">Out of Stock</span>
-                    </div>
-                  )}
-                  {hasDiscount && (
-                    <div style={{ position: 'absolute', top: '1rem', left: '1rem' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '0.35rem 0.65rem', color: '#fff', background: '#c2410c', fontSize: '0.78rem', fontWeight: 800, letterSpacing: '0.02em', boxShadow: '0 3px 10px rgba(124,45,18,0.2)' }}>
-                        {discountPercent}% OFF
-                      </span>
                     </div>
                   )}
                 </div>
@@ -544,12 +531,7 @@ export default function POSPage() {
                     </button>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
-                      {hasDiscount && (
-                        <span style={{ color: '#78838a', fontSize: '0.85rem', textDecoration: 'line-through' }}>
-                          ₹{regularUnitPrice.toFixed(2)}
-                        </span>
-                      )}
-                      <span style={{ fontSize: '1.25rem', fontWeight: 800, color: hasDiscount ? '#c2410c' : '#1f2a2e' }}>
+                      <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1f2a2e' }}>
                         ₹{unitPrice.toFixed(2)}
                       </span>
                     </div>
