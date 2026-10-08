@@ -19,6 +19,16 @@ export const getDailySummary = async (req, res, next) => {
   }
 };
 
+export const getCustomRangeSummary = async (req, res, next) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const data = await reportsService.getCustomRangeSummary(startDate, endDate);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getCustomerLTV = async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;

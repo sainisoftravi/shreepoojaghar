@@ -3,18 +3,22 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../../../lib/api.js';
 import { TrendingUp, DollarSign, PieChart, ShoppingBag, AlertTriangle, Calendar } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 
 export default function ReportsPage() {
   const [dashboard, setDashboard] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(
+  const [startDate, setStartDate] = useState(
     new Date().toISOString().split('T')[0]
   );
-  const [dailySummary, setDailySummary] = useState(null);
+  const [endDate, setEndDate] = useState(
+    new Date().toISOString().split('T')[0]
+  );
+  const [rangeSummary, setRangeSummary] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchDashboard();
-    fetchDailySummary(selectedDate);
+    fetchRangeSummary(startDate, endDate);
   }, []);
 
   const fetchDashboard = async () => {
@@ -28,19 +32,25 @@ export default function ReportsPage() {
     }
   };
 
-  const fetchDailySummary = async (dateStr) => {
+  const fetchRangeSummary = async (start, end) => {
     try {
-      const res = await apiFetch(`/reports/daily?date=${dateStr}`);
-      setDailySummary(res.data);
+      const res = await apiFetch(`/reports/range?startDate=${start}&endDate=${end}`);
+      setRangeSummary(res.data);
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleDateChange = (e) => {
+  const handleStartDateChange = (e) => {
     const val = e.target.value;
-    setSelectedDate(val);
-    fetchDailySummary(val);
+    setStartDate(val);
+    fetchRangeSummary(val, endDate);
+  };
+
+  const handleEndDateChange = (e) => {
+    const val = e.target.value;
+    setEndDate(val);
+    fetchRangeSummary(startDate, val);
   };
 
   if (loading) return <div>Loading reports...</div>;
@@ -89,9 +99,9 @@ export default function ReportsPage() {
         <div style={styles.kpiCard} className="card animate-fade-in">
           <div style={styles.kpiMeta}>
             <span>Net Profit Earned</span>
-            <TrendingUp size={20} color="#187653" />
+            <TrendingUp size={20} color={today.totalProfit < 0 ? '#e11d48' : '#187653'} />
           </div>
-          <div style={{ ...styles.kpiValue, color: '#187653' }}>
+          <div style={{ ...styles.kpiValue, color: today.totalProfit < 0 ? '#e11d48' : '#187653' }}>
             ₹{today.totalProfit?.toFixed(2) || '0.00'}
           </div>
           <span style={styles.kpiSub}>FIFO Cost Deducted</span>
@@ -109,54 +119,127 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {/* Section: Historical Daily Summary Picker */}
+      {/* Section: Custom Date Range Report */}
       <div style={styles.section} className="glass-panel">
         <div className="report-section-header">
-          <h3><Calendar size={18} /> Daily Summary Lookup</h3>
-          <input
-            type="date"
-            className="input-control"
-            style={{ width: '180px' }}
-            value={selectedDate}
-            onChange={handleDateChange}
-          />
+          <h3><Calendar size={18} /> Date Range Report</h3>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <div>
+              <label style={{ fontSize: '0.8rem', color: '#536168', marginRight: '0.5rem' }}>From</label>
+              <input
+                type="date"
+                className="input-control"
+                style={{ width: '150px' }}
+                value={startDate}
+                onChange={handleStartDateChange}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.8rem', color: '#536168', marginRight: '0.5rem' }}>To</label>
+              <input
+                type="date"
+                className="input-control"
+                style={{ width: '150px' }}
+                value={endDate}
+                onChange={handleEndDateChange}
+              />
+            </div>
+          </div>
         </div>
 
-        {dailySummary && (
-          <div style={styles.dailyGrid}>
-            <div style={styles.dailyItem}>
-              <span>Date</span>
-              <strong>{dailySummary.date}</strong>
+        {rangeSummary && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Range KPI Row */}
+            <div style={styles.dailyGrid}>
+              <div style={styles.dailyItem}>
+                <span>Period</span>
+                <strong style={{ fontSize: '0.8rem' }}>{rangeSummary.startDate} <br/>to {rangeSummary.endDate}</strong>
+              </div>
+              <div style={styles.dailyItem}>
+                <span>Total Sales</span>
+                <strong style={{ color: '#b95117' }}>₹{rangeSummary.totalSales}</strong>
+              </div>
+              <div style={styles.dailyItem}>
+                <span>Total Net Profit</span>
+                <strong style={{ color: rangeSummary.totalProfit < 0 ? '#e11d48' : '#187653' }}>
+                  ₹{rangeSummary.totalProfit}
+                </strong>
+              </div>
+              <div style={styles.dailyItem}>
+                <span>Avg Margin</span>
+                <strong style={{ color: rangeSummary.totalProfit < 0 ? '#e11d48' : '#a66b12' }}>
+                  {rangeSummary.marginPercentage}%
+                </strong>
+              </div>
+              <div style={styles.dailyItem}>
+                <span>Total Invoices</span>
+                <strong>{rangeSummary.invoiceCount}</strong>
+              </div>
             </div>
-            <div style={styles.dailyItem}>
-              <span>Sales</span>
-              <strong style={{ color: '#b95117' }}>₹{dailySummary.totalSales}</strong>
-            </div>
-            <div style={styles.dailyItem}>
-              <span>Net Profit</span>
-              <strong style={{ color: '#187653' }}>₹{dailySummary.totalProfit}</strong>
-            </div>
-            <div style={styles.dailyItem}>
-              <span>Margin</span>
-              <strong style={{ color: '#a66b12' }}>{dailySummary.marginPercentage}%</strong>
-            </div>
-            <div style={styles.dailyItem}>
-              <span>Invoices</span>
-              <strong>{dailySummary.invoiceCount}</strong>
+
+            {/* Range Bar Chart */}
+            <div style={{ height: '350px', background: '#fff', padding: '1rem', borderRadius: '12px', border: '1px solid #eee' }}>
+              <h4 style={{ marginBottom: '1rem', color: '#1f2a2e' }}>Daily Performance Trend</h4>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={rangeSummary.dailyData} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis 
+                    dataKey="date" 
+                    tickFormatter={(tick) => tick.split('-')[2]} // Show just the day number
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 12 }} 
+                  />
+                  <YAxis 
+                    yAxisId="left"
+                    orientation="left"
+                    stroke="#b95117"
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 12 }} 
+                    tickFormatter={(val) => `₹${val}`}
+                  />
+                  <Tooltip 
+                    cursor={{ fill: '#f6f6f2' }}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                    formatter={(value, name) => {
+                      // Custom formatter to show negatives in red if needed, 
+                      // but default recharts tooltip shows it fine.
+                      return [`₹${value}`, name];
+                    }}
+                  />
+                  <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                  <Bar yAxisId="left" dataKey="totalSales" name="Total Sales (₹)" fill="#b95117" radius={[4, 4, 0, 0]} />
+                  <Bar 
+                    yAxisId="left" 
+                    dataKey="totalProfit" 
+                    name="Net Profit (₹)" 
+                    radius={[4, 4, 0, 0]} 
+                  >
+                    {
+                      rangeSummary.dailyData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.totalProfit < 0 ? '#e11d48' : '#187653'} />
+                      ))
+                    }
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         )}
       </div>
+
+
 
       {/* Widgets: Top Sellers & Low Stock */}
       <div style={styles.widgetGrid}>
         {/* Top Sellers */}
         <div className="card">
           <h3 style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ShoppingBag size={18} color="#f97316" /> Top Selling Items
+            <ShoppingBag size={18} color="#f97316" /> Top Selling Items (In Range)
           </h3>
           <div style={styles.widgetList}>
-            {dashboard?.topSellers?.map((item) => (
+            {(rangeSummary?.topSellers || dashboard?.topSellers)?.map((item) => (
               <div key={item.productId} style={styles.widgetRow}>
                 <span>{item.productName}</span>
                 <span className="badge badge-info">{item.totalQtySold} units sold</span>

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { decryptInvoicePii } from '../utils/customer-privacy.js';
+import { decryptInvoicePii, getCustomerPhoneLookup } from '../utils/customer-privacy.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const prisma = new PrismaClient();
 
@@ -19,16 +20,30 @@ export const getInvoiceByNumber = async (invoiceNo) => {
   return decryptInvoicePii(invoice);
 };
 
-export const listInvoices = async ({ page = 1, limit = 20 } = {}) => {
+export const listInvoices = async ({ page = 1, limit = 20, phone } = {}) => {
   const skip = (page - 1) * limit;
+  let where = {};
+  
+  if (phone) {
+    const normalized = normalizePhone(phone);
+    if (normalized) {
+      where = {
+        customer: {
+          phoneLookup: getCustomerPhoneLookup(normalized),
+        }
+      };
+    }
+  }
+
   const [invoices, total] = await Promise.all([
     prisma.salesInvoice.findMany({
+      where,
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
       include: { customer: { select: { name: true, phone: true } } },
     }),
-    prisma.salesInvoice.count(),
+    prisma.salesInvoice.count({ where }),
   ]);
   return { invoices: invoices.map(decryptInvoicePii), total, page, limit };
 };

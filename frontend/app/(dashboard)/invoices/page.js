@@ -14,13 +14,16 @@ export default function InvoicesPage() {
   const [resendingInvoice, setResendingInvoice] = useState('');
   const [printingInvoice, setPrintingInvoice] = useState(false);
 
+  const [searchPhone, setSearchPhone] = useState('');
+
   useEffect(() => {
     fetchInvoices();
-  }, []);
+  }, [searchPhone]);
 
   const fetchInvoices = async () => {
     try {
-      const res = await apiFetch('/invoices');
+      const url = searchPhone ? `/invoices?phone=${encodeURIComponent(searchPhone)}` : '/invoices';
+      const res = await apiFetch(url);
       setInvoices(res.data?.invoices || []);
     } catch (err) {
       console.error(err);
@@ -88,6 +91,16 @@ export default function InvoicesPage() {
           <h1 style={styles.title}>Sales Invoices</h1>
           <p style={styles.subtitle}>{user?.role === 'ADMIN' ? 'Historical transactions, locked profits & WhatsApp status' : 'Historical transactions & WhatsApp status'}</p>
         </div>
+        <div>
+          <input
+            type="tel"
+            placeholder="Search Mobile No..."
+            className="input-control"
+            value={searchPhone}
+            onChange={(e) => setSearchPhone(e.target.value)}
+            style={{ width: '250px' }}
+          />
+        </div>
       </div>
 
       {/* Table */}
@@ -131,7 +144,7 @@ export default function InvoicesPage() {
                 </td>
                 {user?.role === 'ADMIN' && (
                   <td>
-                    <strong style={{ color: '#187653' }}>
+                    <strong style={{ color: Number(inv.totalProfit) < 0 ? '#e11d48' : '#187653' }}>
                       ₹{Number(inv.totalProfit).toFixed(2)}
                     </strong>
                   </td>
@@ -234,7 +247,7 @@ export default function InvoicesPage() {
               {user?.role === 'ADMIN' && (
                 <div style={styles.sumRow}>
                   <span>Profit Earned:</span>
-                  <span style={{ color: '#187653', fontWeight: '800' }}>
+                  <span style={{ color: Number(selectedInvoice.totalProfit) < 0 ? '#e11d48' : '#187653', fontWeight: '800' }}>
                     ₹{Number(selectedInvoice.totalProfit).toFixed(2)}
                   </span>
                 </div>

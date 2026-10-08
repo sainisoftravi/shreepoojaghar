@@ -8,7 +8,8 @@ export const listInvoices = async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
-    const data = await invoiceService.listInvoices({ page, limit });
+    const phone = req.query.phone;
+    const data = await invoiceService.listInvoices({ page, limit, phone });
     res.json({ success: true, data });
   } catch (error) {
     next(error);

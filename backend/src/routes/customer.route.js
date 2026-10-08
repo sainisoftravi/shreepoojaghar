@@ -5,6 +5,6 @@ import { authenticate, authorize } from '../middleware/auth.middleware.js';
 const router = Router();
 
 router.get('/', authenticate, authorize('ADMIN'), customerController.listCustomers);
-router.get('/:phone', authenticate, authorize('ADMIN'), customerController.getCustomerByPhone);
+router.get('/:phone', authenticate, customerController.getCustomerByPhone);
 
 export default router;

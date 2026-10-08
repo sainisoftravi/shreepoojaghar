@@ -40,6 +40,97 @@ export const getDailySummary = async (dateStr) => {
 };
 
 /**
+ * Get custom range summary with daily breakdowns and top sellers.
+ */
+export const getCustomRangeSummary = async (startDate, endDate) => {
+  const start = startDate ? new Date(startDate) : new Date();
+  start.setHours(0, 0, 0, 0);
+  
+  const end = endDate ? new Date(endDate) : new Date();
+  end.setHours(23, 59, 59, 999);
+
+  const [invoices, topSellersRaw] = await Promise.all([
+    prisma.salesInvoice.findMany({
+      where: {
+        createdAt: { gte: start, lte: end },
+      },
+      orderBy: { createdAt: 'asc' }
+    }),
+    prisma.invoiceItem.groupBy({
+      by: ['productId', 'productName'],
+      _sum: { quantity: true },
+      where: {
+        invoice: {
+          createdAt: { gte: start, lte: end }
+        }
+      },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: 10, // top 10 sellers in range
+    })
+  ]);
+
+  const topSellers = topSellersRaw.map(t => ({
+    productId: t.productId,
+    productName: t.productName,
+    totalQtySold: t._sum.quantity,
+  }));
+
+  const dailyMap = {};
+  
+  let current = new Date(start);
+  while (current <= end) {
+    const dayStr = new Date(current.getTime() - (current.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    dailyMap[dayStr] = {
+      date: dayStr,
+      totalSales: 0,
+      totalProfit: 0,
+      invoiceCount: 0
+    };
+    current.setDate(current.getDate() + 1);
+  }
+
+  let totalSalesAggregate = 0;
+  let totalProfitAggregate = 0;
+
+  invoices.forEach(inv => {
+    const dayStr = new Date(inv.createdAt.getTime() - (inv.createdAt.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    if (dailyMap[dayStr]) {
+      dailyMap[dayStr].totalSales += Number(inv.totalAmount);
+      dailyMap[dayStr].totalProfit += Number(inv.totalProfit);
+      dailyMap[dayStr].invoiceCount += 1;
+    } else {
+      dailyMap[dayStr] = {
+        date: dayStr,
+        totalSales: Number(inv.totalAmount),
+        totalProfit: Number(inv.totalProfit),
+        invoiceCount: 1
+      };
+    }
+    totalSalesAggregate += Number(inv.totalAmount);
+    totalProfitAggregate += Number(inv.totalProfit);
+  });
+
+  const dailyData = Object.values(dailyMap).map(d => ({
+    ...d,
+    totalSales: parseFloat(d.totalSales.toFixed(2)),
+    totalProfit: parseFloat(d.totalProfit.toFixed(2))
+  })).sort((a, b) => a.date.localeCompare(b.date));
+
+  const marginPercentage = totalSalesAggregate > 0 ? (totalProfitAggregate / totalSalesAggregate) * 100 : 0;
+
+  return {
+    startDate: start.toISOString().split('T')[0],
+    endDate: end.toISOString().split('T')[0],
+    totalSales: parseFloat(totalSalesAggregate.toFixed(2)),
+    totalProfit: parseFloat(totalProfitAggregate.toFixed(2)),
+    marginPercentage: parseFloat(marginPercentage.toFixed(2)),
+    invoiceCount: invoices.length,
+    dailyData,
+    topSellers
+  };
+};
+
+/**
  * Dashboard overview — today's stats + low stock + top sellers
  */
 export const getDashboard = async () => {

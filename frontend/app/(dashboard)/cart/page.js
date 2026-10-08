@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import QRCode from '../../../components/QRCode.js';
 
-const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+const roundMoney = (value) => Math.round(Number(value || 0));
 
 export default function DedicatedCartPage() {
   const [cart, setCart] = useState([]);
@@ -135,6 +135,18 @@ export default function DedicatedCartPage() {
     syncCart(updated);
   };
 
+  const handlePhoneBlur = async () => {
+    if (!phone || phone.length < 10) return;
+    try {
+      const res = await apiFetch(`/customers/${encodeURIComponent(phone)}`);
+      if (res.data && res.data.name) {
+        setCustomerName(res.data.name);
+      }
+    } catch (err) {
+      // Ignored if customer is not found
+    }
+  };
+
   const subtotal = roundMoney(cart.reduce((sum, item) => (
     sum + roundMoney(Number(item.regularPrice ?? item.salePrice ?? 0) * Number(item.qtyInUnit || 0))
   ), 0));
@@ -160,12 +172,12 @@ export default function DedicatedCartPage() {
     if (!discountIsValid) {
       setError(discountType === 'PERCENT'
         ? 'Discount percentage must be between 0% and 100%.'
-        : `Discount cannot exceed subtotal (₹${subtotal.toFixed(2)}).`);
+        : `Discount cannot exceed subtotal (₹${subtotal}).`);
       return;
     }
 
     if (paymentMode === 'CASH' && cashGiven && parseFloat(cashGiven) < grandTotal) {
-      setError(`Cash received (₹${cashGiven}) is less than total amount (₹${grandTotal.toFixed(2)})`);
+      setError(`Cash received (₹${cashGiven}) is less than total amount (₹${grandTotal})`);
       return;
     }
 
@@ -501,7 +513,7 @@ export default function DedicatedCartPage() {
                           </div>
                         </td>
                         <td style={{ color: '#334155', fontWeight: 600 }}>
-                          <span>₹{Number(item.regularPrice ?? item.salePrice).toFixed(2)}</span>
+                          <span>₹{roundMoney(item.regularPrice ?? item.salePrice)}</span>
                         </td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -544,7 +556,7 @@ export default function DedicatedCartPage() {
                           </div>
                         </td>
                         <td style={{ color: '#c2410c', fontWeight: 800, fontSize: '1rem' }}>
-                          ₹{roundMoney(Number(item.regularPrice ?? item.salePrice) * item.qtyInUnit).toFixed(2)}
+                          ₹{roundMoney(Number(item.regularPrice ?? item.salePrice) * item.qtyInUnit)}
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <button
@@ -598,6 +610,7 @@ export default function DedicatedCartPage() {
                   placeholder="+91 98765 43210"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
+                  onBlur={handlePhoneBlur}
                 />
                 <small style={{ display: 'block', marginTop: '0.35rem', color: '#64748b', lineHeight: 1.4 }}>
                   We’ll send the PDF invoice to this WhatsApp number after checkout.
@@ -720,7 +733,7 @@ export default function DedicatedCartPage() {
                   {cashGiven && parseFloat(cashGiven) >= grandTotal && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', color: '#047857', fontWeight: 700 }}>
                       <span>Change to Return:</span>
-                      <span style={{ fontSize: '1.1rem' }}>₹{(parseFloat(cashGiven) - grandTotal).toFixed(2)}</span>
+                      <span style={{ fontSize: '1.1rem' }}>₹{roundMoney(parseFloat(cashGiven) - grandTotal)}</span>
                     </div>
                   )}
                 </div>
@@ -728,18 +741,18 @@ export default function DedicatedCartPage() {
 
               <div style={{ display: 'grid', gap: '0.4rem', padding: '0.25rem 0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
-                  <span>Subtotal</span><strong>₹{subtotal.toFixed(2)}</strong>
+                  <span>Subtotal</span><strong>₹{subtotal}</strong>
                 </div>
                 {discountAmount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#047857' }}>
-                    <span>Bill discount</span><strong>−₹{discountAmount.toFixed(2)}</strong>
+                    <span>Bill discount</span><strong>−₹{discountAmount}</strong>
                   </div>
                 )}
               </div>
 
               <div className="cart-total-row">
                 <span style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>Grand Total</span>
-                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#c2410c' }}>₹{grandTotal.toFixed(2)}</span>
+                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#c2410c' }}>₹{grandTotal}</span>
               </div>
 
               <button

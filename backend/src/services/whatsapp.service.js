@@ -16,7 +16,8 @@ const { Client, LocalAuth, MessageMedia } = (await import('whatsapp-web.js')).de
  *   - Otherwise falls back to QR code in terminal.
  */
 
-const PAIR_PHONE = process.env.WHATSAPP_PHONE_PAIR || null; // e.g. "917877496745"
+export let waStatus = 'INITIALIZING'; // INITIALIZING, QR_READY, CONNECTED, DISCONNECTED
+export let connectedPhone = null;
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
@@ -39,49 +40,64 @@ let isClientReady = false;
 const readyWaiters = new Set();
 
 client.on('qr', async (qr) => {
-  if (PAIR_PHONE) {
-    // Phone-number pairing: request a pairing code instead of showing QR
-    try {
-      logger.info(`Requesting WhatsApp pairing code for phone: ${PAIR_PHONE}`);
-      const code = await client.requestPairingCode(PAIR_PHONE);
-      logger.info('═══════════════════════════════════════════');
-      logger.info(`  WhatsApp Pairing Code: ${code}`);
-      logger.info(`  Enter this code in WhatsApp → Linked Devices → Link with Phone Number`);
-      logger.info('═══════════════════════════════════════════');
-    } catch (err) {
-      logger.error({ err }, 'Failed to get WhatsApp pairing code — falling back to QR');
-      // If pairing code fails, log QR as fallback
-      const qrcode = await import('qrcode-terminal');
-      qrcode.default.generate(qr, { small: true });
-    }
-  } else {
-    // Fallback: show QR in terminal
-    const qrcode = await import('qrcode-terminal');
-    logger.info('WhatsApp QR Code — scan with your phone:');
-    qrcode.default.generate(qr, { small: true });
-  }
+  logger.info('WhatsApp Client is waiting for pairing...');
+  waStatus = 'QR_READY';
 });
 
 client.on('ready', () => {
   logger.info('✅ WhatsApp Client is ready!');
   isClientReady = true;
+  waStatus = 'CONNECTED';
+  connectedPhone = client.info?.wid?.user || null;
   for (const resolve of readyWaiters) resolve();
   readyWaiters.clear();
 });
 
 client.on('authenticated', () => {
   logger.info('WhatsApp Client authenticated successfully');
+  waStatus = 'CONNECTED';
 });
 
 client.on('auth_failure', (msg) => {
   logger.error({ msg }, 'WhatsApp authentication failed');
   isClientReady = false;
+  waStatus = 'DISCONNECTED';
 });
 
 client.on('disconnected', (reason) => {
-  logger.warn({ reason }, 'WhatsApp client disconnected — will reconnect on next restart');
+  logger.warn({ reason }, 'WhatsApp client disconnected');
   isClientReady = false;
+  waStatus = 'DISCONNECTED';
+  connectedPhone = null;
 });
+
+export const requestPairingCode = async (phone) => {
+  if (isClientReady) throw new Error('WhatsApp is already connected');
+  logger.info(`Requesting WhatsApp pairing code for phone: ${phone}`);
+  const code = await client.requestPairingCode(phone);
+  return code;
+};
+
+export const getWhatsAppStatus = () => {
+  return { status: waStatus, connectedPhone: client?.info?.wid?.user || connectedPhone };
+};
+
+export const logoutWhatsApp = async () => {
+  if (client) {
+    try {
+      await client.logout();
+    } catch (e) {
+      logger.error({ err: e }, 'Error logging out');
+    }
+    waStatus = 'DISCONNECTED';
+    isClientReady = false;
+    connectedPhone = null;
+    try {
+      await client.destroy();
+      client.initialize();
+    } catch (e) {}
+  }
+};
 
 const cleanupChromiumLocks = (dir) => {
   if (!fs.existsSync(dir)) return;
