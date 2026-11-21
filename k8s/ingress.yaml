@@ -1,0 +1,59 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shree-pooja-ingress
+  namespace: shree-pooja
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+    # 1. Route for Cloudflare Tunnel Domain
+    - host: shreepoojaghar.labstackops.top
+      http:
+        paths:
+          - path: /uploads
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 3001
+          - path: /api/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 3001
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 3000
+
+    # 2. Catch-all rule (for direct IP or other hostname testing)
+    - http:
+        paths:
+          - path: /uploads
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 3001
+          - path: /api/v1
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 3001
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 3000
