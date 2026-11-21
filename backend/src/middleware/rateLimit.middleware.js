@@ -17,9 +17,10 @@ export const apiLimiter = rateLimit({
 // Strict limiter for auth endpoints (prevent brute force)
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path === '/public-key',
   message: {
     success: false,
     code: 'RATE_LIMITED',

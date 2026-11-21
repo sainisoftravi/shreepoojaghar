@@ -4,7 +4,16 @@
  * never appear in plain text in DevTools Network tab or memory dumps.
  */
 
-let cachedPublicKeyPem = null;
+const STATIC_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA07s79gQJaSsYkCS6z0Tl
+sqDY/H4VxUNRElsUs8YrZRd2bv4W8gD/kG7UVmBnJeQSlSF2o7nCy6aHhLaBk9vY
+7k6vdQ+KUg7mIoChao8UOC/gLca9yRHHYt0JTF2JH736nt4BI2+IEefuHlC67A9M
+EFNhWTKym2IKmmpqdfNCCmCCh/QorNbtUINvxVrQq/59s806/7zOgfmOQkKmGzYg
+IjZN8sa8rg8BL4fGiVsOYKoYFBBWDFnFnAepE1eyUXA6GkVqd/GqKtjl0WFyPwVU
+tHg1PmM+/5yOJlQJm3w/rIzDBkUmEhUDZpObakZHoH1jMr6es1Q57uM1HlHDRXLN
++QIDAQAB
+-----END PUBLIC KEY-----`;
+
 let cachedCryptoKey = null;
 
 function base64ToArrayBuffer(base64) {
@@ -34,15 +43,7 @@ export async function encryptLoginPayload(email, password) {
 
   try {
     if (!cachedCryptoKey) {
-      const res = await fetch('/api/v1/auth/public-key');
-      const json = await res.json();
-      if (!json.success || !json.publicKey) {
-        throw new Error('Failed to fetch public key');
-      }
-
-      cachedPublicKeyPem = json.publicKey;
-
-      const pemContents = cachedPublicKeyPem
+      const pemContents = STATIC_PUBLIC_KEY_PEM
         .replace(/-----BEGIN PUBLIC KEY-----/g, '')
         .replace(/-----END PUBLIC KEY-----/g, '')
         .replace(/\s+/g, '');
@@ -62,8 +63,8 @@ export async function encryptLoginPayload(email, password) {
     }
 
     const payload = JSON.stringify({
-      email,
-      password,
+      email: String(email || '').trim().toLowerCase(),
+      password: String(password || ''),
       timestamp: Date.now(),
     });
 
@@ -76,7 +77,7 @@ export async function encryptLoginPayload(email, password) {
 
     return arrayBufferToBase64(cipherBuffer);
   } catch (err) {
-    console.warn('Client-side login encryption warning (falling back):', err);
+    console.warn('Client-side login encryption error:', err);
     return null;
   }
 }
