@@ -252,7 +252,7 @@ export const sendWhatsAppInvoice = async (invoice) => {
 const buildProductBroadcastCaption = ({ customerName, product, type = 'NEW_PRODUCT' }) => {
   const storeName = process.env.STORE_NAME || 'श्री पूजा घर (Shree Pooja Ghar)';
   const storeAddress = process.env.STORE_ADDRESS || 'अजमेर, राजस्थान';
-  const storePhone = process.env.STORE_PHONE || '917877496745';
+  const storePhone = process.env.STORE_PHONE || connectedPhone || '';
 
   const nameHi = product.nameHi ? product.nameHi.trim() : '';
   const nameEn = product.nameEn ? product.nameEn.trim() : '';
