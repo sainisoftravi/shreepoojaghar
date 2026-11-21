@@ -108,13 +108,32 @@ export const requestPairingCode = async (phone) => {
     throw new Error('Please enter a valid phone number with country code (e.g. 917877496745)');
   }
 
-  if (!sock) {
-    throw new Error('WhatsApp service is initializing. Please wait a few seconds and try again.');
-  }
+  try {
+    if (!sock || waStatus === 'DISCONNECTED') {
+      logger.info('WhatsApp socket disconnected. Reinitializing before pairing...');
+      await initWhatsApp();
+      await new Promise((r) => setTimeout(r, 2500));
+    }
 
-  logger.info(`Requesting WhatsApp pairing code for phone: ${cleanPhone}`);
-  const code = await sock.requestPairingCode(cleanPhone);
-  return code;
+    logger.info(`Requesting WhatsApp pairing code for phone: ${cleanPhone}`);
+    return await sock.requestPairingCode(cleanPhone);
+  } catch (err) {
+    logger.warn({ err: err.message }, 'Pairing code request failed, resetting stale session and retrying...');
+    try {
+      if (fs.existsSync(AUTH_DIR)) {
+        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      }
+    } catch (_) {}
+
+    await initWhatsApp();
+    await new Promise((r) => setTimeout(r, 3000));
+
+    if (!sock) {
+      throw new Error('Failed to reconnect to WhatsApp server. Please try again.');
+    }
+
+    return await sock.requestPairingCode(cleanPhone);
+  }
 };
 
 export const getWhatsAppStatus = () => {
