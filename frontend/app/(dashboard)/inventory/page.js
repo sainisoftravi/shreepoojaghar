@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api.js';
 import { useAuth } from '../../../context/AuthContext.js';
-import { Package, Plus, AlertTriangle, Layers, Tag, DollarSign, Search, Trash2, X, Check, Edit, Sparkles } from 'lucide-react';
+import { Package, Plus, AlertTriangle, Layers, Tag, DollarSign, Search, Trash2, X, Check, Edit, Sparkles, History } from 'lucide-react';
 import { fetchHindiTranslation, debounceTranslateToHindi } from '../../../lib/translate.js';
 
 const getPurchaseUnits = (product) => {
@@ -32,6 +32,20 @@ export default function InventoryPage() {
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
+
+  // Batch modal tabs & history
+  const [batchModalTab, setBatchModalTab] = useState('list'); // 'list' | 'add'
+  const [productBatches, setProductBatches] = useState([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+  const [batchActionError, setBatchActionError] = useState('');
+  const [batchActionSuccess, setBatchActionSuccess] = useState('');
+
+  // Editing batch state
+  const [editingBatch, setEditingBatch] = useState(null);
+  const [editPurchaseUnitId, setEditPurchaseUnitId] = useState('');
+  const [editPurchaseQty, setEditPurchaseQty] = useState('');
+  const [editPurchasePricePerUnit, setEditPurchasePricePerUnit] = useState('');
+  const [editVendor, setEditVendor] = useState('');
 
   // New Product Form
   const [nameEn, setNameEn] = useState('');
@@ -282,11 +296,131 @@ export default function InventoryPage() {
     setShowProductModal(true);
   };
 
+  const formatBatchDate = (d) => {
+    if (!d) return '—';
+    try {
+      const dt = new Date(d);
+      return dt.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch (e) {
+      return String(d);
+    }
+  };
+
+  const fetchBatches = async (productId) => {
+    if (!productId) return;
+    setLoadingBatches(true);
+    setBatchActionError('');
+    try {
+      const res = await apiFetch(`/batches/product/${productId}`);
+      setProductBatches(res.data || []);
+    } catch (err) {
+      console.error(err);
+      setBatchActionError(err.message || 'Failed to load batches');
+    } finally {
+      setLoadingBatches(false);
+    }
+  };
+
+  const openBatchModal = (prod, initialTab = 'list') => {
+    setSelectedProduct(prod);
+    setBatchModalTab(initialTab);
+    setEditingBatch(null);
+    setBatchActionError('');
+    setBatchActionSuccess('');
+    setError('');
+    const pUnits = getPurchaseUnits(prod);
+    const purchaseUnit = pUnits[0];
+    setPurchaseUnitId(purchaseUnit ? purchaseUnit.id : '');
+    setPurchaseQty('');
+    setPurchasePricePerUnit('');
+    setVendor('');
+    setShowBatchModal(true);
+    fetchBatches(prod.id);
+  };
+
+  const handleStartEditBatch = (b) => {
+    setEditingBatch(b);
+    setEditPurchaseUnitId(b.purchaseUnitId || '');
+    setEditPurchaseQty(String(b.purchaseQty ?? ''));
+    setEditPurchasePricePerUnit(String(b.purchasePricePerUnit ?? ''));
+    setEditVendor(b.vendor || '');
+    setBatchActionError('');
+    setBatchActionSuccess('');
+  };
+
+  const handleCancelEditBatch = () => {
+    setEditingBatch(null);
+    setBatchActionError('');
+  };
+
+  const handleSaveEditBatch = async (e) => {
+    e.preventDefault();
+    if (!editingBatch || !selectedProduct) return;
+    setBatchActionError('');
+    setLoading(true);
+
+    try {
+      await apiFetch(`/batches/${editingBatch.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          purchaseUnitId: editPurchaseUnitId || undefined,
+          purchaseQty: parseFloat(editPurchaseQty),
+          purchasePricePerUnit: parseFloat(editPurchasePricePerUnit),
+          vendor: editVendor.trim() || undefined,
+        }),
+      });
+
+      setBatchActionSuccess('Batch updated successfully!');
+      setEditingBatch(null);
+      await fetchBatches(selectedProduct.id);
+      await fetchProducts();
+    } catch (err) {
+      setBatchActionError(err.message || 'Failed to update batch');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteBatch = async (b) => {
+    if (b.allocations && b.allocations.length > 0) {
+      alert('Cannot delete this batch because items from it have already been sold in customer invoices.');
+      return;
+    }
+
+    const unitName = b.purchaseUnit?.nameEn || selectedProduct?.baseUnit || 'unit';
+    const confirmMsg = `Are you sure you want to delete this batch (${b.purchaseQty} ${unitName})? This will deduct ${b.qtyRemainingBase} ${selectedProduct.baseUnit} from product stock.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setBatchActionError('');
+    setLoading(true);
+    try {
+      await apiFetch(`/batches/${b.id}`, {
+        method: 'DELETE',
+      });
+      setBatchActionSuccess('Batch deleted successfully!');
+      await fetchBatches(selectedProduct.id);
+      await fetchProducts();
+    } catch (err) {
+      setBatchActionError(err.message || 'Failed to delete batch');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Add Batch Stock
   const handleAddBatch = async (e) => {
     e.preventDefault();
     if (!selectedProduct) return;
     setError('');
+    setBatchActionError('');
+    setBatchActionSuccess('');
     setLoading(true);
 
     try {
@@ -302,9 +436,13 @@ export default function InventoryPage() {
         }),
       });
 
-      setShowBatchModal(false);
-      resetBatchForm();
-      fetchProducts();
+      setBatchActionSuccess('Stock batch added successfully!');
+      setPurchaseQty('');
+      setPurchasePricePerUnit('');
+      setVendor('');
+      await fetchBatches(selectedProduct.id);
+      await fetchProducts();
+      setBatchModalTab('list');
     } catch (err) {
       setError(err.message || 'Failed to add batch stock');
     } finally {
@@ -313,14 +451,7 @@ export default function InventoryPage() {
   };
 
   const openBatchModalForProduct = (prod) => {
-    setSelectedProduct(prod);
-    const purchaseUnit = getPurchaseUnits(prod)[0];
-    setPurchaseUnitId(purchaseUnit ? purchaseUnit.id : '');
-    setPurchaseQty('');
-    setPurchasePricePerUnit('');
-    setVendor('');
-    setError('');
-    setShowBatchModal(true);
+    openBatchModal(prod, 'add');
   };
 
   const resetProductForm = () => {
@@ -361,13 +492,23 @@ export default function InventoryPage() {
   const totalBaseQty = pQty * pFactor;
   const costPerBase = pFactor > 0 ? pPrice / pFactor : 0;
 
+  // Live Editing Batch Calculation Details
+  const editPurchaseUnit = selectedProduct?.units?.find((u) => u.id === editPurchaseUnitId) || selectedProduct?.units?.[0];
+  const editFactor = editPurchaseUnit ? Number(editPurchaseUnit.factorToBase) : 1.0;
+  const editQty = parseFloat(editPurchaseQty) || 0;
+  const editPrice = parseFloat(editPurchasePricePerUnit) || 0;
+  const editReceivedBase = editQty * editFactor;
+  const consumedBase = editingBatch ? Math.max(0, Number(editingBatch.qtyReceivedBase || 0) - Number(editingBatch.qtyRemainingBase || 0)) : 0;
+  const editRemainingBase = editReceivedBase - consumedBase;
+  const editCostPerBase = editFactor > 0 ? editPrice / editFactor : 0;
+
   return (
     <>
       <style>{`
         .inventory-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
         .inv-modal { width: 560px; max-width: 95vw; max-height: 90vh; overflow-y: auto; border-radius: 20px; padding: 1.75rem; background: #fff; color: #0f172a; }
-        .inv-product-modal {
+        .inv-product-modal, .inv-batch-modal {
           width: 880px;
           max-width: 96vw;
           max-height: 90vh;
@@ -453,7 +594,7 @@ export default function InventoryPage() {
         @media (max-width: 720px) {
           .inventory-header { flex-direction: column; align-items: flex-start; }
           .inventory-header .btn { width: 100%; }
-          .inv-modal, .inv-product-modal { width: 100%; max-width: 100%; max-height: 100dvh; border-radius: 0; }
+          .inv-modal, .inv-product-modal, .inv-batch-modal { width: 100%; max-width: 100%; max-height: 100dvh; border-radius: 0; }
           .inv-modal { padding: 1rem; }
           .inv-modal-header, .inv-modal-body, .inv-modal-footer { padding: 1rem; }
         }
@@ -544,8 +685,16 @@ export default function InventoryPage() {
                     </td>
                     {user?.role === 'ADMIN' && (
                       <td style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                        <button onClick={() => openBatchModalForProduct(p)} className="btn btn-sm btn-secondary" title="Add Stock Batch">
+                        <button onClick={() => openBatchModal(p, 'add')} className="btn btn-sm btn-secondary" title="Add Stock Batch">
                           <Plus size={14} /> Add Batch
+                        </button>
+                        <button
+                          onClick={() => openBatchModal(p, 'list')}
+                          className="btn btn-sm btn-secondary"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: '#059669', borderColor: '#a7f3d0' }}
+                          title="View & Edit Batches"
+                        >
+                          <Layers size={14} /> Batches
                         </button>
                         <button
                           onClick={() => openEditModal(p)}
@@ -914,118 +1063,415 @@ export default function InventoryPage() {
           </div>
         )}
 
-        {/* ─── Add Batch Stock Modal (Kitni Bori / Bori Ka Rate) ─── */}
+        {/* ─── Batch Management Modal (View / Edit Older Batches & Add New Batch) ─── */}
         {showBatchModal && selectedProduct && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-            <div className="inv-modal glass-panel animate-fade-in">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <h2 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>Add Stock Batch</h2>
-                <button onClick={() => setShowBatchModal(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={20} /></button>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(6px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div className="inv-batch-modal animate-fade-in">
+              {/* Modal Header */}
+              <div className="inv-modal-header">
+                <div>
+                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span>📦 Batch Stock Management</span>
+                  </h2>
+                  <p style={{ margin: '3px 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                    Product: <strong style={{ color: '#0f172a' }}>{selectedProduct.nameEn}</strong> {selectedProduct.nameHi ? `(${selectedProduct.nameHi})` : ''} • Available Stock: <strong style={{ color: '#c2410c' }}>{selectedProduct.formattedStock || `${selectedProduct.totalStockBase} ${selectedProduct.baseUnit}`}</strong>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowBatchModal(false); setEditingBatch(null); }}
+                  style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 4 }}
+                >
+                  <X size={22} />
+                </button>
               </div>
 
-              <p style={{ fontSize: '0.88rem', color: '#475569', marginBottom: '1rem' }}>
-                Product: <strong style={{ color: '#0f172a' }}>{selectedProduct.nameEn}</strong> (Current Stock: <strong style={{ color: '#c2410c' }}>{selectedProduct.formattedStock || `${selectedProduct.totalStockBase} ${selectedProduct.baseUnit}`}</strong>)
-              </p>
+              {/* Top Navigation Tabs */}
+              <div style={{ padding: '0.75rem 1.75rem 0', background: '#fafaf9', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => { setBatchModalTab('list'); setEditingBatch(null); setBatchActionError(''); }}
+                  style={{
+                    padding: '0.55rem 1.1rem',
+                    borderRadius: '8px 8px 0 0',
+                    border: 'none',
+                    borderBottom: batchModalTab === 'list' && !editingBatch ? '3px solid #ea580c' : '3px solid transparent',
+                    background: batchModalTab === 'list' && !editingBatch ? '#ffffff' : 'transparent',
+                    color: batchModalTab === 'list' && !editingBatch ? '#ea580c' : '#64748b',
+                    fontWeight: 700,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <Layers size={16} /> Batch History ({productBatches.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setBatchModalTab('add'); setEditingBatch(null); setBatchActionError(''); }}
+                  style={{
+                    padding: '0.55rem 1.1rem',
+                    borderRadius: '8px 8px 0 0',
+                    border: 'none',
+                    borderBottom: batchModalTab === 'add' ? '3px solid #ea580c' : '3px solid transparent',
+                    background: batchModalTab === 'add' ? '#ffffff' : 'transparent',
+                    color: batchModalTab === 'add' ? '#ea580c' : '#64748b',
+                    fontWeight: 700,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <Plus size={16} /> + Add New Batch
+                </button>
+              </div>
 
-              {error && <div style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '0.6rem', borderRadius: 8, fontSize: '0.85rem', marginBottom: '1rem' }}>⚠️ {error}</div>}
-
-              <form onSubmit={handleAddBatch}>
-                <div className="input-group">
-                  <label>Purchase Unit (Packing Type)</label>
-                  <select className="input-control" value={purchaseUnitId} onChange={(e) => setPurchaseUnitId(e.target.value)}>
-                    {purchaseUnits.map((u) => (
-                      <option key={u.id} value={u.id}>{u.nameEn} ({u.nameHi}) — 1 {u.nameEn} = {u.factorToBase} {selectedProduct.baseUnit}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-grid">
-                  <div className="input-group">
-                    <label>Purchase Qty (Kitni {activePurchaseUnit?.nameEn || 'bori'})</label>
-                    <input type="number" step="0.001" className="input-control" placeholder="e.g. 9" value={purchaseQty} onChange={(e) => setPurchaseQty(e.target.value)} required />
-                  </div>
-                  <div className="input-group">
-                    <label>Price Per {activePurchaseUnit?.nameEn || 'bori'} (Rate ₹)</label>
-                    <input type="number" step="0.01" className="input-control" placeholder="e.g. 2400" value={purchasePricePerUnit} onChange={(e) => setPurchasePricePerUnit(e.target.value)} required />
-                  </div>
-                </div>
-
-                <div className="input-group">
-                  <label>Vendor / Supplier Name (Optional)</label>
-                  <input type="text" className="input-control" placeholder="e.g. Laxmi Traders, Jaipur" value={vendor} onChange={(e) => setVendor(e.target.value)} />
-                </div>
-
-                {/* Live Preview Box */}
-                {pQty > 0 && pPrice > 0 && (
-                  <div className="batch-preview-box animate-fade-in">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', borderBottom: '1px solid rgba(16,185,129,0.2)', paddingBottom: '0.4rem' }}>
-                      <span style={{ fontSize: '0.85rem', color: '#166534' }}>📦 Total Base Stock Received:</span>
-                      <strong style={{ fontSize: '1rem', color: '#047857' }}>{totalBaseQty} {selectedProduct.baseUnit}</strong>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                      <span style={{ fontSize: '0.85rem', color: '#166534' }}>💰 Calculated Cost / {selectedProduct.baseUnit}:</span>
-                      <strong style={{ fontSize: '1rem', color: '#854d0e' }}>₹{costPerBase.toFixed(2)} / {selectedProduct.baseUnit}</strong>
-                    </div>
-
-                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.4rem' }}>Computed Selling Prices & Profit Per Unit:</label>
-                    <table className="unit-table" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8 }}>
-                      <thead>
-                        <tr>
-                          <th>Unit</th>
-                          <th>Factor</th>
-                          <th>Margin %</th>
-                          <th>Unit Cost</th>
-                          <th>Selling Price</th>
-                          <th>Profit / Unit</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sellUnits.map((u) => {
-                          const factor = Number(u.factorToBase);
-                          const margin = Number(u.marginPercent);
-                          const unitCost = costPerBase * factor;
-                          const sp = u.priceOverride ? Number(u.priceOverride) : Math.round(unitCost * (1 + margin / 100));
-                          const profit = sp - unitCost;
-
-                          return (
-                            <tr key={u.id}>
-                              <td><strong>{u.nameEn}</strong></td>
-                              <td>{factor} {selectedProduct.baseUnit}</td>
-                              <td>{margin}%</td>
-                              <td>₹{unitCost.toFixed(2)}</td>
-                              <td><strong style={{ color: '#047857' }}>₹{sp.toFixed(2)}</strong></td>
-                              <td><strong style={{ color: '#854d0e' }}>₹{profit.toFixed(2)}</strong></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+              {/* Modal Body */}
+              <div className="inv-modal-body">
+                {batchActionSuccess && (
+                  <div style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '0.65rem 1rem', borderRadius: 10, fontSize: '0.88rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>✅ {batchActionSuccess}</span>
+                    <button type="button" onClick={() => setBatchActionSuccess('')} style={{ background: 'none', border: 'none', color: '#166534', cursor: 'pointer', fontSize: '1rem' }}>×</button>
                   </div>
                 )}
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '0.75rem 1rem', borderRadius: '8px', marginTop: '1rem' }}>
-                  <input 
-                    type="checkbox" 
-                    id="notifyWhatsAppBatch" 
-                    checked={notifyWhatsAppBatch} 
-                    onChange={(e) => setNotifyWhatsAppBatch(e.target.checked)}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
-                  />
-                  <div>
-                    <label htmlFor="notifyWhatsAppBatch" style={{ cursor: 'pointer', fontWeight: 600, color: '#166534', margin: 0, fontSize: '0.9rem', display: 'block' }}>
-                      📢 WhatsApp Broadcast: सभी ग्राहकों को नए स्टॉक की सूचना भेजें
-                    </label>
-                    <span style={{ color: '#15803d', fontSize: '0.78rem' }}>
-                      स्टॉक ऐड होते ही ग्राहकों के WhatsApp पर पर्सनलाइज्ड अपडेट जाएगा।
-                    </span>
+                {(batchActionError || error) && (
+                  <div style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '0.65rem 1rem', borderRadius: 10, fontSize: '0.88rem', marginBottom: '1rem' }}>
+                    ⚠️ {batchActionError || error}
                   </div>
-                </div>
+                )}
 
-                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                  <button type="button" onClick={() => setShowBatchModal(false)} className="btn btn-secondary">Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Save Stock Batch'}</button>
-                </div>
-              </form>
+                {/* TAB 1: EDIT SPECIFIC BATCH */}
+                {editingBatch ? (
+                  <form onSubmit={handleSaveEditBatch} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: '0.85rem 1.1rem', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong style={{ color: '#0369a1', fontSize: '0.95rem' }}>✏️ Edit Older Stock Batch</strong>
+                        <div style={{ fontSize: '0.82rem', color: '#0284c7', marginTop: '2px' }}>
+                          Originally received: <strong>{formatBatchDate(editingBatch.receivedAt)}</strong>
+                        </div>
+                      </div>
+                      <button type="button" onClick={handleCancelEditBatch} className="btn btn-sm btn-secondary">
+                        Cancel Edit
+                      </button>
+                    </div>
+
+                    {consumedBase > 0 && (
+                      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', padding: '0.75rem 1rem', borderRadius: '10px', fontSize: '0.85rem' }}>
+                        ℹ️ <strong>{consumedBase.toFixed(2)} {selectedProduct.baseUnit}</strong> have already been sold from this batch in customer orders. The new received stock cannot be less than this amount.
+                      </div>
+                    )}
+
+                    <div className="input-group">
+                      <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>Purchase Unit (Packaging Type)</label>
+                      <select className="input-control" value={editPurchaseUnitId} onChange={(e) => setEditPurchaseUnitId(e.target.value)}>
+                        {purchaseUnits.map((u) => (
+                          <option key={u.id} value={u.id}>{u.nameEn} ({u.nameHi}) — 1 {u.nameEn} = {u.factorToBase} {selectedProduct.baseUnit}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-grid">
+                      <div className="input-group">
+                        <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>
+                          Purchase Quantity ({editPurchaseUnit?.nameEn || selectedProduct.baseUnit})
+                        </label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          className="input-control"
+                          value={editPurchaseQty}
+                          onChange={(e) => setEditPurchaseQty(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>
+                          Price Per {editPurchaseUnit?.nameEn || selectedProduct.baseUnit} (₹)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="input-control"
+                          value={editPurchasePricePerUnit}
+                          onChange={(e) => setEditPurchasePricePerUnit(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="input-group">
+                      <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>Vendor / Supplier Name</label>
+                      <input
+                        type="text"
+                        className="input-control"
+                        placeholder="e.g. Laxmi Traders, Jaipur"
+                        value={editVendor}
+                        onChange={(e) => setEditVendor(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Live Preview for Edit */}
+                    {editQty > 0 && (
+                      <div className="batch-preview-box animate-fade-in">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', borderBottom: '1px solid rgba(16,185,129,0.2)', paddingBottom: '0.4rem' }}>
+                          <span style={{ fontSize: '0.85rem', color: '#166534' }}>📦 Total Received Base Stock:</span>
+                          <strong style={{ fontSize: '0.95rem', color: '#047857' }}>{editReceivedBase} {selectedProduct.baseUnit}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', borderBottom: '1px solid rgba(16,185,129,0.2)', paddingBottom: '0.4rem' }}>
+                          <span style={{ fontSize: '0.85rem', color: '#166534' }}>🔄 Remaining Stock in this Batch:</span>
+                          <strong style={{ fontSize: '0.95rem', color: editRemainingBase < -0.0001 ? '#b91c1c' : '#047857' }}>
+                            {editRemainingBase.toFixed(2)} {selectedProduct.baseUnit} {editRemainingBase < -0.0001 ? '(⚠️ Cannot be below already sold units!)' : ''}
+                          </strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '0.85rem', color: '#166534' }}>💰 Calculated Cost / {selectedProduct.baseUnit}:</span>
+                          <strong style={{ fontSize: '0.95rem', color: '#854d0e' }}>₹{editCostPerBase.toFixed(2)} / {selectedProduct.baseUnit}</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                      <button type="button" onClick={handleCancelEditBatch} className="btn btn-secondary">
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={loading || editRemainingBase < -0.0001}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1.4rem' }}
+                      >
+                        <Check size={16} /> {loading ? 'Saving...' : 'Save Batch Changes'}
+                      </button>
+                    </div>
+                  </form>
+                ) : batchModalTab === 'list' ? (
+                  /* TAB 2: BATCH HISTORY TABLE */
+                  <div>
+                    {loadingBatches ? (
+                      <div style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
+                        Loading stock batches...
+                      </div>
+                    ) : productBatches.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '3rem 1rem', background: '#f8fafc', borderRadius: '14px', border: '1px dashed #cbd5e1' }}>
+                        <p style={{ color: '#475569', fontWeight: 600, margin: '0 0 0.5rem', fontSize: '1rem' }}>No stock batches recorded yet</p>
+                        <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '0 0 1.25rem' }}>
+                          Add your first stock purchase to track costs, batches, and FIFO stock movements.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setBatchModalTab('add')}
+                          className="btn btn-primary"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1.25rem' }}
+                        >
+                          <Plus size={16} /> + Add First Stock Batch
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="unit-table-container" style={{ marginTop: 0 }}>
+                        <table className="unit-table">
+                          <thead>
+                            <tr>
+                              <th style={{ width: '150px' }}>Date & Vendor</th>
+                              <th style={{ width: '120px' }}>Purchased Qty</th>
+                              <th style={{ width: '120px' }}>Purchase Rate</th>
+                              <th style={{ width: '110px' }}>Cost / Base</th>
+                              <th style={{ width: '130px' }}>Remaining Stock</th>
+                              <th style={{ width: '90px', textAlign: 'center' }}>Status</th>
+                              <th style={{ width: '110px', textAlign: 'center' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {productBatches.map((b) => {
+                              const unit = b.purchaseUnit || selectedProduct?.units?.find(u => u.id === b.purchaseUnitId);
+                              const unitName = unit ? unit.nameEn : selectedProduct.baseUnit;
+                              const remaining = Number(b.qtyRemainingBase || 0);
+                              const received = Number(b.qtyReceivedBase || 0);
+                              const isExhausted = remaining <= 0;
+                              const hasSales = b.allocations && b.allocations.length > 0;
+
+                              return (
+                                <tr key={b.id}>
+                                  <td>
+                                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{formatBatchDate(b.receivedAt)}</div>
+                                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                                      {b.vendor ? `Supplier: ${b.vendor}` : <span style={{ color: '#94a3b8' }}>No vendor noted</span>}
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <strong style={{ color: '#0f172a', fontSize: '0.92rem' }}>{b.purchaseQty ?? received}</strong>
+                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}> {unitName}</span>
+                                  </td>
+                                  <td>
+                                    <strong style={{ color: '#334155' }}>₹{Number(b.purchasePricePerUnit || b.purchaseCost || 0).toFixed(2)}</strong>
+                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}> / {unitName}</span>
+                                  </td>
+                                  <td>
+                                    <span style={{ color: '#854d0e', fontWeight: 700 }}>₹{Number(b.costPerBase || 0).toFixed(2)}</span>
+                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}> / {selectedProduct.baseUnit}</span>
+                                  </td>
+                                  <td>
+                                    <strong style={{ color: isExhausted ? '#94a3b8' : '#047857' }}>
+                                      {remaining}
+                                    </strong>
+                                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}> / {received} {selectedProduct.baseUnit}</span>
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <span
+                                      className={`badge ${isExhausted ? 'badge-danger' : hasSales ? 'badge-warning' : 'badge-success'}`}
+                                      style={{ fontSize: '0.72rem', padding: '2px 6px' }}
+                                    >
+                                      {isExhausted ? 'Sold Out' : hasSales ? 'Partially Sold' : 'Untouched'}
+                                    </span>
+                                  </td>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartEditBatch(b)}
+                                        className="btn btn-sm btn-secondary"
+                                        style={{ padding: '0.3rem 0.55rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: '#0284c7', borderColor: '#bae6fd' }}
+                                        title="Edit this batch (quantity, rate, supplier)"
+                                      >
+                                        <Edit size={13} /> Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteBatch(b)}
+                                        className="btn btn-sm"
+                                        disabled={hasSales}
+                                        style={{
+                                          padding: '0.3rem 0.55rem',
+                                          background: hasSales ? '#f1f5f9' : 'rgba(244, 63, 94, 0.15)',
+                                          color: hasSales ? '#94a3b8' : '#f43f5e',
+                                          border: hasSales ? '1px solid #e2e8f0' : '1px solid rgba(244, 63, 94, 0.3)',
+                                          cursor: hasSales ? 'not-allowed' : 'pointer',
+                                        }}
+                                        title={hasSales ? 'Cannot delete: items already sold from this batch' : 'Delete this batch'}
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* TAB 3: ADD NEW BATCH */
+                  <form onSubmit={handleAddBatch}>
+                    <div className="input-group">
+                      <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>Purchase Unit (Packing Type)</label>
+                      <select className="input-control" value={purchaseUnitId} onChange={(e) => setPurchaseUnitId(e.target.value)}>
+                        {purchaseUnits.map((u) => (
+                          <option key={u.id} value={u.id}>{u.nameEn} ({u.nameHi}) — 1 {u.nameEn} = {u.factorToBase} {selectedProduct.baseUnit}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-grid">
+                      <div className="input-group">
+                        <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>
+                          Purchase Qty (Kitni {activePurchaseUnit?.nameEn || 'bori'})
+                        </label>
+                        <input type="number" step="0.001" className="input-control" placeholder="e.g. 9" value={purchaseQty} onChange={(e) => setPurchaseQty(e.target.value)} required />
+                      </div>
+                      <div className="input-group">
+                        <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>
+                          Price Per {activePurchaseUnit?.nameEn || 'bori'} (Rate ₹)
+                        </label>
+                        <input type="number" step="0.01" className="input-control" placeholder="e.g. 2400" value={purchasePricePerUnit} onChange={(e) => setPurchasePricePerUnit(e.target.value)} required />
+                      </div>
+                    </div>
+
+                    <div className="input-group">
+                      <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>Vendor / Supplier Name (Optional)</label>
+                      <input type="text" className="input-control" placeholder="e.g. Laxmi Traders, Jaipur" value={vendor} onChange={(e) => setVendor(e.target.value)} />
+                    </div>
+
+                    {/* Live Preview Box */}
+                    {pQty > 0 && pPrice > 0 && (
+                      <div className="batch-preview-box animate-fade-in">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', borderBottom: '1px solid rgba(16,185,129,0.2)', paddingBottom: '0.4rem' }}>
+                          <span style={{ fontSize: '0.85rem', color: '#166534' }}>📦 Total Base Stock Received:</span>
+                          <strong style={{ fontSize: '1rem', color: '#047857' }}>{totalBaseQty} {selectedProduct.baseUnit}</strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                          <span style={{ fontSize: '0.85rem', color: '#166534' }}>💰 Calculated Cost / {selectedProduct.baseUnit}:</span>
+                          <strong style={{ fontSize: '1rem', color: '#854d0e' }}>₹{costPerBase.toFixed(2)} / {selectedProduct.baseUnit}</strong>
+                        </div>
+
+                        <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.4rem' }}>Computed Selling Prices & Profit Per Unit:</label>
+                        <table className="unit-table" style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                          <thead>
+                            <tr>
+                              <th>Unit</th>
+                              <th>Factor</th>
+                              <th>Margin %</th>
+                              <th>Unit Cost</th>
+                              <th>Selling Price</th>
+                              <th>Profit / Unit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sellUnits.map((u) => {
+                              const factor = Number(u.factorToBase);
+                              const margin = Number(u.marginPercent);
+                              const unitCost = costPerBase * factor;
+                              const sp = u.priceOverride ? Number(u.priceOverride) : Math.round(unitCost * (1 + margin / 100));
+                              const profit = sp - unitCost;
+
+                              return (
+                                <tr key={u.id}>
+                                  <td><strong>{u.nameEn}</strong></td>
+                                  <td>{factor} {selectedProduct.baseUnit}</td>
+                                  <td>{margin}%</td>
+                                  <td>₹{unitCost.toFixed(2)}</td>
+                                  <td><strong style={{ color: '#047857' }}>₹{sp.toFixed(2)}</strong></td>
+                                  <td><strong style={{ color: '#854d0e' }}>₹{profit.toFixed(2)}</strong></td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '0.75rem 1rem', borderRadius: '8px', marginTop: '1rem' }}>
+                      <input 
+                        type="checkbox" 
+                        id="notifyWhatsAppBatch" 
+                        checked={notifyWhatsAppBatch} 
+                        onChange={(e) => setNotifyWhatsAppBatch(e.target.checked)}
+                        style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
+                      />
+                      <div>
+                        <label htmlFor="notifyWhatsAppBatch" style={{ cursor: 'pointer', fontWeight: 600, color: '#166534', margin: 0, fontSize: '0.9rem', display: 'block' }}>
+                          📢 WhatsApp Broadcast: सभी ग्राहकों को नए स्टॉक की सूचना भेजें
+                        </label>
+                        <span style={{ color: '#15803d', fontSize: '0.78rem' }}>
+                          स्टॉक ऐड होते ही ग्राहकों के WhatsApp पर पर्सनलाइज्ड अपडेट जाएगा।
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+                      <button type="button" onClick={() => setShowBatchModal(false)} className="btn btn-secondary">Cancel</button>
+                      <button type="submit" className="btn btn-primary" disabled={loading} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1.4rem' }}>
+                        <Check size={16} /> {loading ? 'Saving...' : 'Save Stock Batch'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -154,6 +154,12 @@ export const getProductBatches = async (productId) => {
 
   const batches = await prisma.productBatch.findMany({
     where: { productId },
+    include: {
+      purchaseUnit: true,
+      allocations: {
+        select: { id: true, qtyBase: true },
+      },
+    },
     orderBy: { receivedAt: 'desc' },
   });
   return batches.map(decryptProductBatch);
@@ -177,26 +183,42 @@ export const updateBatch = async (batchId, data) => {
   const newPurchaseQty = Number(data.purchaseQty ?? batch.purchaseQty ?? 0);
   const newPricePerUnit = Number(data.purchasePricePerUnit ?? batch.purchasePricePerUnit ?? 0);
 
+  if (newPurchaseQty <= 0) {
+    throw new ValidationError('Purchase quantity must be greater than 0');
+  }
+  if (newPricePerUnit < 0) {
+    throw new ValidationError('Purchase price cannot be negative');
+  }
+
   const newQtyReceivedBase = newPurchaseQty * factor;
   if (newQtyReceivedBase < consumed - 0.0001) {
-    throw new ValidationError(`Cannot reduce batch received quantity below consumed stock (${consumed.toFixed(3)} base units consumed)`);
+    throw new ValidationError(`Cannot reduce batch received quantity below consumed stock (${consumed.toFixed(2)} base units already sold)`);
   }
 
   const newQtyRemainingBase = newQtyReceivedBase - consumed;
-  const newCostPerBase = newPricePerUnit / factor;
+  const newCostPerBase = factor > 0 ? newPricePerUnit / factor : 0;
   const deltaReceivedBase = newQtyReceivedBase - oldReceived;
 
-  return await prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const updatedBatch = await tx.productBatch.update({
       where: { id: batchId },
       data: {
+        purchaseUnitId: purchaseUnit ? purchaseUnit.id : null,
         purchaseQty: newPurchaseQty,
         purchasePricePerUnit: newPricePerUnit,
         qtyReceivedBase: newQtyReceivedBase,
         qtyRemainingBase: newQtyRemainingBase,
         costPerBase: newCostPerBase,
+        purchaseCost: roundMoney(newPricePerUnit),
+        initialStock: Math.round(newQtyReceivedBase),
         currentStock: Math.max(0, Math.floor(newQtyRemainingBase)),
         vendor: data.vendor !== undefined ? (data.vendor ? encryptPii(data.vendor) : null) : batch.vendor,
+      },
+      include: {
+        purchaseUnit: true,
+        allocations: {
+          select: { id: true, qtyBase: true },
+        },
       },
     });
 
@@ -218,8 +240,27 @@ export const updateBatch = async (batchId, data) => {
       }
     }
 
+    await tx.auditLog.create({
+      data: {
+        action: 'UPDATE_BATCH',
+        entity: 'ProductBatch',
+        entityId: batch.id,
+        details: {
+          productId: batch.productId,
+          oldPurchaseQty: batch.purchaseQty,
+          newPurchaseQty,
+          oldPricePerUnit: batch.purchasePricePerUnit,
+          newPricePerUnit,
+          deltaStockBase: deltaReceivedBase,
+        },
+      },
+    });
+
     return decryptProductBatch(updatedBatch);
   });
+
+  invalidateProductCache();
+  return updated;
 };
 
 export const deleteBatch = async (batchId) => {
@@ -231,10 +272,10 @@ export const deleteBatch = async (batchId) => {
   });
 
   if (allocationCount > 0) {
-    throw new ValidationError('Cannot delete batch with existing sales allocations');
+    throw new ValidationError('Cannot delete this batch because sales have already been made from it.');
   }
 
-  return await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const remainingToDeduct = Number(batch.qtyRemainingBase);
 
     await tx.product.update({
@@ -244,8 +285,23 @@ export const deleteBatch = async (batchId) => {
       },
     });
 
+    await tx.auditLog.create({
+      data: {
+        action: 'DELETE_BATCH',
+        entity: 'ProductBatch',
+        entityId: batch.id,
+        details: {
+          productId: batch.productId,
+          qtyDeductedBase: remainingToDeduct,
+        },
+      },
+    });
+
     return await tx.productBatch.delete({
       where: { id: batchId },
     });
   });
+
+  invalidateProductCache();
+  return result;
 };

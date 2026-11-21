@@ -11,4 +11,10 @@ router.get('/product/:productId', authenticate, batchController.getProductBatche
 // Add new batch (Admin only)
 router.post('/', authenticate, authorize('ADMIN'), validateBatch, batchController.addBatch);
 
+// Update existing batch (Admin only)
+router.put('/:id', authenticate, authorize('ADMIN'), batchController.updateBatch);
+
+// Delete batch (Admin only)
+router.delete('/:id', authenticate, authorize('ADMIN'), batchController.deleteBatch);
+
 export default router;
