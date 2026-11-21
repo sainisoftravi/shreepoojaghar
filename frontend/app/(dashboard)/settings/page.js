@@ -457,6 +457,11 @@ export default function SettingsPage() {
                 {waCode.match(/.{1,4}/g)?.join('-')}
               </div>
             </div>
+            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+              <button onClick={handleWaLogout} className="btn btn-secondary" disabled={waLoading}>
+                🔄 Cancel & Show QR Code Instead
+              </button>
+            </div>
           </div>
         )}
       </div>
