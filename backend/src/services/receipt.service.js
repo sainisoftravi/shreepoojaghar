@@ -285,8 +285,9 @@ export const generateThermalReceiptHTML = async (invoice) => {
 
       <div class="review-box center">
         <div style="font-weight: 700; font-size: 8pt;">⭐ RATE & REVIEW US ON GOOGLE ⭐</div>
+        <div style="font-size: 7pt; color: #555; margin-top: 2px;">(Scan with Phone Camera)</div>
         ${qrDataUrl ? `<img src="${qrDataUrl}" width="75" height="75" alt="Google Review QR" />` : ''}
-        <div><a href="${escapeHtml(reviewUrl)}" target="_blank" class="review-link">[ Review us on Google ]</a></div>
+        <div><a href="${escapeHtml(reviewUrl)}" target="_blank" class="review-link">[ Click Here to Review Us ]</a></div>
       </div>
 
       <footer class="footer center">
@@ -465,19 +466,22 @@ export const generateThermalReceiptPDF = async (invoice) => {
         y += 5;
         doc.font('Courier-Bold').fontSize(7.5).fillColor('#000000')
           .text('* RATE & REVIEW US ON GOOGLE *', 10, y, { align: 'center', width: printableWidth });
-        y += 11;
+        y += 10;
+        doc.font('Courier').fontSize(6.5).fillColor('#555555')
+          .text('(Scan with Phone Camera)', 10, y, { align: 'center', width: printableWidth });
+        y += 9;
         const qrSize = 58;
         const qrX = (pageWidth - qrSize) / 2;
         doc.image(reviewQrBuffer, qrX, y, { width: qrSize, height: qrSize });
-        y += qrSize + 3;
-        doc.font('Courier').fontSize(6.5).fillColor('#0000ee')
-          .text('Review: https://g.page/r/Cfk-_b7c-aDIEBM/review', 10, y, {
+        y += qrSize + 4;
+        doc.font('Courier-Bold').fontSize(7.5).fillColor('#0000ee')
+          .text('[ Click Here to Review Us ]', 10, y, {
             align: 'center',
             width: printableWidth,
             link: reviewUrl,
             underline: true,
           });
-        y += 10;
+        y += 11;
         drawDashedLine(y);
         y += 6;
       }
