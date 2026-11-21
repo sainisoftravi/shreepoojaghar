@@ -266,7 +266,17 @@ export const createProduct = async (data) => {
           },
         ];
 
+    const seenUnitNames = new Set();
     for (const u of unitsToCreate) {
+      const cleanName = String(u.nameEn || '').trim().toLowerCase();
+      if (!cleanName) {
+        throw new ValidationError('Each unit must have an English name (e.g. piece, pack, box)');
+      }
+      if (seenUnitNames.has(cleanName)) {
+        throw new ValidationError(`Duplicate unit name "${u.nameEn}". Each unit for this product must have a distinct name (e.g. Unit 1: "piece", Unit 2: "pack" or "box"). If you only sell in single units, remove Unit 2.`);
+      }
+      seenUnitNames.add(cleanName);
+
       const factor = Number(u.factorToBase || 1);
       if (factor <= 0) {
         throw new ValidationError(`Unit factor for ${u.nameEn} must be greater than 0`);
@@ -358,6 +368,17 @@ export const updateProduct = async (id, data) => {
 
     // If units provided, upsert units
     if (Array.isArray(data.units)) {
+      const seenUnitNames = new Set();
+      for (const u of data.units) {
+        const cleanName = String(u.nameEn || '').trim().toLowerCase();
+        if (cleanName) {
+          if (seenUnitNames.has(cleanName)) {
+            throw new ValidationError(`Duplicate packaging unit "${u.nameEn}". Each unit for this product must have a distinct name (e.g. "piece", "pack").`);
+          }
+          seenUnitNames.add(cleanName);
+        }
+      }
+
       for (const u of data.units) {
         const factor = Number(u.factorToBase || 1);
         if (factor <= 0) {

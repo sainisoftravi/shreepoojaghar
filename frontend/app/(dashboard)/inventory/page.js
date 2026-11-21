@@ -164,6 +164,14 @@ export default function InventoryPage() {
   const handleSaveProduct = async (e) => {
     e.preventDefault();
     setError('');
+
+    const unitNames = units.map(u => (u.nameEn || '').trim().toLowerCase()).filter(Boolean);
+    const duplicates = unitNames.filter((item, index) => unitNames.indexOf(item) !== index);
+    if (duplicates.length > 0) {
+      setError(`Each packaging unit must have a different name. Found duplicate: "${duplicates[0]}". (e.g. Unit 1: "piece", Unit 2: "pack").`);
+      return;
+    }
+
     setLoading(true);
 
     try {

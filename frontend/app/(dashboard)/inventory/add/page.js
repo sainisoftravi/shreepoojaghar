@@ -47,9 +47,22 @@ export default function AddProductPage() {
   };
 
   const addUnitRow = () => {
+    const existingNames = units.map(u => (u.nameEn || '').trim().toLowerCase());
+    let defaultEn = 'pack';
+    let defaultHi = 'पैक';
+    let defaultFactor = 10.0;
+    if (existingNames.includes('pack')) {
+      defaultEn = 'box';
+      defaultHi = 'डिब्बा';
+      defaultFactor = 12.0;
+    } else if (existingNames.includes('box')) {
+      defaultEn = 'carton';
+      defaultHi = 'कार्टन';
+      defaultFactor = 24.0;
+    }
     setUnits([
       ...units,
-      { nameEn: '', nameHi: '', factorToBase: 1.0, isPurchaseUnit: false, isSellUnit: true, marginPercent: 25, priceOverride: '', minQty: 1, qtyStep: 1 },
+      { nameEn: defaultEn, nameHi: defaultHi, factorToBase: defaultFactor, isPurchaseUnit: false, isSellUnit: true, marginPercent: 25, priceOverride: '', minQty: 1, qtyStep: 1 },
     ]);
   };
 
@@ -88,6 +101,13 @@ export default function AddProductPage() {
     const invalidUnit = units.find((unit) => !unit.nameEn.trim() || Number(unit.factorToBase) <= 0);
     if (invalidUnit) {
       setError('Every unit needs a name and a conversion greater than zero.');
+      return;
+    }
+
+    const unitNames = units.map(u => (u.nameEn || '').trim().toLowerCase());
+    const duplicates = unitNames.filter((item, index) => unitNames.indexOf(item) !== index);
+    if (duplicates.length > 0) {
+      setError(`Each packaging unit must have a different name. Found duplicate unit: "${duplicates[0]}". Unit 1 and Unit 2 cannot both be named "${duplicates[0]}". (e.g. Unit 1: "piece", Unit 2: "pack" or "box", or click "Remove" if you only sell in single units).`);
       return;
     }
 
