@@ -92,6 +92,9 @@ echo "=================================================="
 echo "Active Pods in shree-pooja namespace:"
 $KCTL get pods -n shree-pooja
 echo ""
+echo "Autoscalers (HPA) in shree-pooja namespace:"
+$KCTL get hpa -n shree-pooja
+echo ""
 echo "Active Services in shree-pooja namespace:"
 $KCTL get svc -n shree-pooja
 echo ""

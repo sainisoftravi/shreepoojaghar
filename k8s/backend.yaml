@@ -183,7 +183,7 @@ spec:
             - name: uploads-volume
               mountPath: /app/uploads
             - name: whatsapp-volume
-              mountPath: /app/.wwebjs_auth
+              mountPath: /app/.baileys_auth
           resources:
             requests:
               cpu: 150m
