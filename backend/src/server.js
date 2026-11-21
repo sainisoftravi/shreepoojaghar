@@ -23,7 +23,7 @@ async function startServer() {
 }
 
 function startKeepAlivePing() {
-  const pingUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || 'https://shop-tyl2.onrender.com';
+  const pingUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL;
   if (!pingUrl) return;
 
   const PING_INTERVAL = 10 * 60 * 1000; // Ping every 10 minutes to prevent Render 15-minute sleep
