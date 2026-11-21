@@ -25,8 +25,26 @@ if ! command -v openssl &> /dev/null; then
     sudo apt-get update -qq && sudo apt-get install -y -qq openssl
 fi
 
-# 1. Automatically generate all secure secrets if placeholders are found
-echo "🔑 Checking and auto-generating secrets..."
+# 1. Check if secrets already exist in the cluster to prevent desynchronization
+echo "🔑 Checking cluster secrets..."
+if $KCTL get secret shree-pooja-secrets -n shree-pooja &> /dev/null; then
+    EXISTING_PASS=$($KCTL get secret shree-pooja-secrets -n shree-pooja -o jsonpath='{.data.POSTGRES_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || true)
+    EXISTING_KEY=$($KCTL get secret shree-pooja-secrets -n shree-pooja -o jsonpath='{.data.PII_ENCRYPTION_KEY}' 2>/dev/null | base64 -d 2>/dev/null || true)
+    EXISTING_JWT=$($KCTL get secret shree-pooja-secrets -n shree-pooja -o jsonpath='{.data.JWT_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)
+
+    if [ -n "$EXISTING_PASS" ]; then
+        sed -i "s/change_this_postgres_secure_password/$EXISTING_PASS/g" k8s/secret.yaml
+        echo "🔒 Preserved existing cluster POSTGRES_PASSWORD"
+    fi
+    if [ -n "$EXISTING_KEY" ]; then
+        sed -i "s/change_this_pii_encryption_key_32_bytes_hex/$EXISTING_KEY/g" k8s/secret.yaml
+        echo "🔒 Preserved existing cluster PII_ENCRYPTION_KEY"
+    fi
+    if [ -n "$EXISTING_JWT" ]; then
+        sed -i "s/change_this_jwt_secret_generate_random_key_64_chars/$EXISTING_JWT/g" k8s/secret.yaml
+        echo "🔒 Preserved existing cluster JWT_SECRET"
+    fi
+fi
 
 if grep -q "change_this_pii_encryption_key_32_bytes_hex" k8s/secret.yaml; then
     NEW_KEY=$(openssl rand -hex 32)
