@@ -76,6 +76,10 @@ fi
 echo "☸️ Applying Kubernetes manifests to K3s..."
 $KCTL apply -k k8s/
 
+echo "🔄 Restarting pods to pick up any updated images..."
+$KCTL rollout restart deployment/backend-deployment -n shree-pooja 2>/dev/null || true
+$KCTL rollout restart deployment/frontend-deployment -n shree-pooja 2>/dev/null || true
+
 echo "⏳ Waiting for pods to initialize..."
 $KCTL wait --namespace shree-pooja --for=condition=ready pod -l app=postgres --timeout=180s || true
 $KCTL wait --namespace shree-pooja --for=condition=ready pod -l app=redis --timeout=180s || true
@@ -87,6 +91,9 @@ echo "🎉 DEPLOYMENT COMPLETE!"
 echo "=================================================="
 echo "Active Pods in shree-pooja namespace:"
 $KCTL get pods -n shree-pooja
+echo ""
+echo "Autoscalers (HPA) in shree-pooja namespace:"
+$KCTL get hpa -n shree-pooja
 echo ""
 echo "Active Services in shree-pooja namespace:"
 $KCTL get svc -n shree-pooja

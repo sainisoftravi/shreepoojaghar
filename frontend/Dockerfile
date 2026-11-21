@@ -10,6 +10,7 @@ COPY . .
 
 # Set environment variables for build time
 ENV NEXT_TELEMETRY_DISABLED 1
+ENV BACKEND_URL http://backend-service.shree-pooja.svc.cluster.local:3001
 
 RUN npm run build
 

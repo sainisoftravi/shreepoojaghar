@@ -5,7 +5,7 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "prisma migrate deploy && npm run db:seed && node prisma/encrypt-customer-pii.js && node src/server.js",
+    "start": "npx prisma db push --accept-data-loss && npm run db:seed && node prisma/encrypt-customer-pii.js && node src/server.js",
     "dev": "prisma migrate deploy && npm run db:seed && node prisma/encrypt-customer-pii.js && nodemon src/server.js",
     "db:migrate": "prisma migrate dev",
     "db:encrypt-customer-pii": "node prisma/encrypt-customer-pii.js",
