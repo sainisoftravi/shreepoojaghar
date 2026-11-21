@@ -214,8 +214,15 @@ const buildReceiptCaption = (invoice) => {
     timeStyle: 'short',
   });
 
+  const reviewUrl = process.env.GOOGLE_REVIEW_URL || 'https://g.page/r/Cfk-_b7c-aDIEBM/review';
+  const storePhone = process.env.STORE_PHONE || '+91 9588215257';
+  const storeAddress = process.env.STORE_ADDRESS || 'Moti Vihar Colony, Ajmer, Rajasthan 305004';
+
   const lines = [
-    '🙏 *Shree Pooja Ghar - Purchase invoice*',
+    '🙏 *Shree Pooja Ghar - Purchase Invoice*',
+    `📍 ${storeAddress}`,
+    `📞 Mobile: ${storePhone}`,
+    '--------------------------------------',
     `Invoice: ${invoice.invoiceNo}`,
     `Date: ${date}`,
     `Customer: ${invoice.customerName || 'Guest Customer'}`,
@@ -228,7 +235,10 @@ const buildReceiptCaption = (invoice) => {
     `Total: ₹${Number(invoice.totalAmount).toFixed(2)}`,
     `Payment: ${invoice.paymentMode || 'Other'}`,
     '',
-    'Your itemized PDF invoice is attached. Thank you for shopping with us.'
+    '⭐ *कृपया हमें Google पर रेटिंग व रिव्यू दें:*',
+    reviewUrl,
+    '',
+    'Your itemized PDF invoice is attached. Thank you for shopping with us! 🙏'
   );
   return lines.join('\n');
 };
@@ -283,8 +293,8 @@ export const sendWhatsAppInvoice = async (invoice) => {
 
 const buildProductBroadcastCaption = ({ customerName, product, type = 'NEW_PRODUCT' }) => {
   const storeName = process.env.STORE_NAME || 'श्री पूजा घर (Shree Pooja Ghar)';
-  const storeAddress = process.env.STORE_ADDRESS || 'अजमेर, राजस्थान';
-  const storePhone = process.env.STORE_PHONE || connectedPhone || '';
+  const storeAddress = process.env.STORE_ADDRESS || 'Moti Vihar Colony, Ajmer, Rajasthan 305004';
+  const storePhone = process.env.STORE_PHONE || '+91 9588215257';
 
   const nameHi = product.nameHi ? product.nameHi.trim() : '';
   const nameEn = product.nameEn ? product.nameEn.trim() : '';

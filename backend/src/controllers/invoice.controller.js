@@ -92,7 +92,8 @@ export const getThermalInvoiceHtml = async (req, res, next) => {
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Content-Disposition', `inline; filename="thermal_receipt_${invoice.invoiceNo}.html"`);
-    res.send(generateThermalReceiptHTML(invoice));
+    const html = await generateThermalReceiptHTML(invoice);
+    res.send(html);
   } catch (error) {
     next(error);
   }

@@ -143,6 +143,12 @@ spec:
                 configMapKeyRef:
                   name: shree-pooja-config
                   key: STORE_PHONE
+            - name: GOOGLE_REVIEW_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: shree-pooja-config
+                  key: GOOGLE_REVIEW_URL
+                  optional: true
             - name: WHATSAPP_ACCESS_TOKEN
               valueFrom:
                 secretKeyRef:

@@ -1,12 +1,7 @@
 import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 import { logger } from '../config/logger.js';
 import { decryptPii } from '../utils/customer-privacy.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const escapeHtml = (value = '') => String(value)
   .replace(/&/g, '&amp;')
@@ -16,6 +11,11 @@ const escapeHtml = (value = '') => String(value)
   .replace(/'/g, '&#39;');
 
 const formatMoney = (value) => `Rs ${Number(value || 0).toFixed(2)}`;
+
+const DEFAULT_STORE_NAME = 'Shree Pooja Ghar';
+const DEFAULT_STORE_ADDRESS = 'Moti Vihar Colony, Ajmer, Rajasthan 305004';
+const DEFAULT_STORE_PHONE = '+91 9588215257';
+const DEFAULT_REVIEW_URL = 'https://g.page/r/Cfk-_b7c-aDIEBM/review';
 
 const getItemGrossTotal = (item) => {
   const grossLineTotal = Number(item.grossLineTotal);
@@ -39,7 +39,7 @@ const getInvoiceSubtotal = (invoice, items) => {
  * Generate lightweight A4 PDF Receipt using PDFKit (No Chromium / Puppeteer — uses ~5MB RAM)
  */
 export const generateReceiptPDF = async (invoice) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       const createdAt = new Date(invoice.createdAt || Date.now());
       const date = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
@@ -57,12 +57,21 @@ export const generateReceiptPDF = async (invoice) => {
       const paymentLabels = { CASH: 'Cash', UPI: 'UPI', CARD: 'Card', KHATA: 'Khata' };
       const paymentMode = paymentLabels[String(invoice.paymentMode || '').toUpperCase()] || invoice.paymentMode || 'Cash';
 
-      const storeName = process.env.STORE_NAME || 'Shree Pooja Ghar';
-      const storeAddress = process.env.STORE_ADDRESS || 'Ajmer, Rajasthan, India';
-      const storePhone = process.env.STORE_PHONE ? `Phone: ${process.env.STORE_PHONE}` : '';
+      const storeName = process.env.STORE_NAME || DEFAULT_STORE_NAME;
+      const storeAddress = process.env.STORE_ADDRESS || DEFAULT_STORE_ADDRESS;
+      const storePhone = process.env.STORE_PHONE || DEFAULT_STORE_PHONE;
+      const reviewUrl = process.env.GOOGLE_REVIEW_URL || DEFAULT_REVIEW_URL;
+
       const customerName = invoice.customerName || invoice.customer?.name || 'Guest Customer';
       const customerPhone = invoice.customerPhone || invoice.customer?.phone || 'Not provided';
       const invoiceNo = invoice.invoiceNo || 'N/A';
+
+      let reviewQrBuffer = null;
+      try {
+        reviewQrBuffer = await QRCode.toBuffer(reviewUrl, { width: 100, margin: 1 });
+      } catch (err) {
+        logger.warn({ err: err?.message }, 'Failed to generate review QR for A4 PDF');
+      }
 
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const buffers = [];
@@ -78,7 +87,7 @@ export const generateReceiptPDF = async (invoice) => {
       doc.fillColor('#0f172a').fontSize(22).font('Helvetica-Bold').text(storeName, 40, 60);
       doc.fillColor('#64748b').fontSize(9).font('Helvetica')
         .text(storeAddress, 40, 88)
-        .text(storePhone, 40, 102);
+        .text(`Mobile: ${storePhone}`, 40, 102);
 
       // Invoice Tag
       doc.fillColor('#0f172a').fontSize(16).font('Helvetica-Bold')
@@ -111,7 +120,7 @@ export const generateReceiptPDF = async (invoice) => {
 
       items.forEach((item) => {
         const qty = Number(item.qtyInUnit ?? item.quantity ?? 1);
-        const unitName = item.unitName ? ` (${item.unitName})` : '';
+        const unitName = item.unitName ? ` (${decryptPii(item.unitName)})` : '';
         const unitPrice = Number(item.unitPrice ?? item.unitSalePrice ?? 0);
         const lineTotal = getItemGrossTotal(item);
 
@@ -150,9 +159,18 @@ export const generateReceiptPDF = async (invoice) => {
         .text('TOTAL AMOUNT:', 340, y + 3, { width: 110, align: 'left' })
         .text(formatMoney(total), 450, y + 3, { width: 95, align: 'right' });
 
+      // Google Review Section (A4 Footer)
+      if (reviewQrBuffer) {
+        doc.image(reviewQrBuffer, 230, 660, { width: 50, height: 50 });
+        doc.fillColor('#0f172a').fontSize(8.5).font('Helvetica-Bold')
+          .text('⭐ Rate & Review us on Google ⭐', 40, 715, { align: 'center', width: 515 });
+        doc.fillColor('#0284c7').fontSize(8).font('Helvetica')
+          .text('Review us on Google', 40, 727, { align: 'center', width: 515, link: reviewUrl, underline: true });
+      }
+
       // Footer note
       doc.fillColor('#94a3b8').fontSize(8).font('Helvetica')
-        .text('Thank you for shopping with us! Have a blessed day. 🙏', 40, 745, { align: 'center', width: 515 })
+        .text('Thank you for shopping with us! Have a blessed day. 🙏', 40, 746, { align: 'center', width: 515 })
         .text('This is a computer-generated invoice and does not require a signature.', 40, 758, { align: 'center', width: 515 });
 
       doc.end();
@@ -166,7 +184,7 @@ export const generateReceiptPDF = async (invoice) => {
 /**
  * Generate 80mm thermal receipt HTML
  */
-export const generateThermalReceiptHTML = (invoice) => {
+export const generateThermalReceiptHTML = async (invoice) => {
   const createdAt = new Date(invoice.createdAt || Date.now());
   const date = createdAt.toLocaleDateString('en-IN', {
     timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric',
@@ -178,13 +196,19 @@ export const generateThermalReceiptHTML = (invoice) => {
   const items = Array.isArray(invoice.items) ? invoice.items : [];
   const subtotal = getInvoiceSubtotal(invoice, items);
   const discountAmount = Number(invoice.discountAmount || 0);
-  const storeName = escapeHtml(process.env.STORE_NAME || 'Shree Pooja Ghar');
-  const storeAddress = process.env.STORE_ADDRESS
-    ? `<div>${escapeHtml(process.env.STORE_ADDRESS)}</div>`
-    : '<div>Ajmer, Rajasthan</div>';
-  const storePhone = process.env.STORE_PHONE
-    ? `<div>Phone: ${escapeHtml(process.env.STORE_PHONE)}</div>`
-    : '';
+
+  const storeName = escapeHtml(process.env.STORE_NAME || DEFAULT_STORE_NAME);
+  const storeAddress = escapeHtml(process.env.STORE_ADDRESS || DEFAULT_STORE_ADDRESS);
+  const storePhone = escapeHtml(process.env.STORE_PHONE || DEFAULT_STORE_PHONE);
+  const reviewUrl = process.env.GOOGLE_REVIEW_URL || DEFAULT_REVIEW_URL;
+
+  let qrDataUrl = '';
+  try {
+    qrDataUrl = await QRCode.toDataURL(reviewUrl, { width: 120, margin: 1 });
+  } catch (err) {
+    logger.warn({ err: err?.message }, 'Failed to generate review QR data URL');
+  }
+
   const customerName = escapeHtml(invoice.customerName || invoice.customer?.name || 'Guest Customer');
   const customerPhone = escapeHtml(invoice.customerPhone || invoice.customer?.phone || 'Not provided');
   const invoiceNo = escapeHtml(invoice.invoiceNo || 'N/A');
@@ -214,7 +238,7 @@ export const generateThermalReceiptHTML = (invoice) => {
         body { padding: 4mm; font-family: "DejaVu Sans Mono", "Courier New", monospace; font-size: 10pt; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .center { text-align: center; }
         .brand { font-size: 13pt; font-weight: 700; text-transform: uppercase; }
-        .store-details { margin-top: 2px; font-size: 8.5pt; }
+        .store-details { margin-top: 2px; font-size: 8.5pt; line-height: 1.3; }
         .receipt-title { margin: 9px 0 7px; font-size: 10pt; font-weight: 700; }
         .meta { display: grid; grid-template-columns: 1fr; gap: 2px; font-size: 8.5pt; }
         .rule { border-top: 1px dashed #111; margin: 7px 0; }
@@ -229,12 +253,18 @@ export const generateThermalReceiptHTML = (invoice) => {
         .totals-row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
         .total { margin-top: 3px; padding-top: 5px; border-top: 1px solid #111; font-size: 11pt; font-weight: 700; }
         .payment { margin-top: 6px; }
-        .footer { margin-top: 12px; font-size: 8.5pt; }
+        .review-box { margin-top: 10px; padding: 6px 4px; border: 1px dashed #333; border-radius: 6px; text-align: center; }
+        .review-box img { display: block; margin: 4px auto; }
+        .review-link { display: inline-block; font-size: 8pt; color: #000; font-weight: 700; text-decoration: underline; margin-top: 2px; }
+        .footer { margin-top: 10px; font-size: 8.5pt; }
       </style>
     </head>
     <body>
       <div class="center brand">${storeName}</div>
-      <div class="center store-details">${storeAddress}${storePhone}</div>
+      <div class="center store-details">
+        <div>${storeAddress}</div>
+        <div>Mobile: ${storePhone}</div>
+      </div>
       <div class="center receipt-title">RETAIL INVOICE</div>
       <section class="meta">
         <div>Invoice: <strong>${invoiceNo}</strong></div>
@@ -252,6 +282,13 @@ export const generateThermalReceiptHTML = (invoice) => {
         <div class="totals-row total"><span>TOTAL</span><strong>Rs ${total.toFixed(2)}</strong></div>
         <div class="totals-row payment"><span>${paymentMode}</span><strong>Rs ${total.toFixed(2)}</strong></div>
       </section>
+
+      <div class="review-box center">
+        <div style="font-weight: 700; font-size: 8pt;">⭐ RATE & REVIEW US ON GOOGLE ⭐</div>
+        ${qrDataUrl ? `<img src="${qrDataUrl}" width="75" height="75" alt="Google Review QR" />` : ''}
+        <div><a href="${escapeHtml(reviewUrl)}" target="_blank" class="review-link">[ Review us on Google ]</a></div>
+      </div>
+
       <footer class="footer center">
         <div>Thank you for shopping with us!</div>
         <div style="font-size: 7.5pt; margin-top: 4px; color: #444;">This is a computer-generated invoice and does not require a signature.</div>
@@ -264,7 +301,7 @@ export const generateThermalReceiptHTML = (invoice) => {
  * Generate 80mm thermal receipt PDF using PDFKit
  */
 export const generateThermalReceiptPDF = async (invoice) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       const createdAt = new Date(invoice.createdAt || Date.now());
       const date = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
@@ -282,14 +319,24 @@ export const generateThermalReceiptPDF = async (invoice) => {
       const paymentLabels = { CASH: 'Cash', UPI: 'UPI', CARD: 'Card', KHATA: 'Khata' };
       const paymentMode = paymentLabels[String(invoice.paymentMode || '').toUpperCase()] || invoice.paymentMode || 'Cash';
 
-      const storeName = process.env.STORE_NAME || 'SHREE POOJA GHAR';
-      const storeAddress = process.env.STORE_ADDRESS || 'Ajmer, Rajasthan, India';
+      const storeName = process.env.STORE_NAME || DEFAULT_STORE_NAME;
+      const storeAddress = process.env.STORE_ADDRESS || DEFAULT_STORE_ADDRESS;
+      const storePhone = process.env.STORE_PHONE || DEFAULT_STORE_PHONE;
+      const reviewUrl = process.env.GOOGLE_REVIEW_URL || DEFAULT_REVIEW_URL;
+
       const customerName = invoice.customerName || invoice.customer?.name || 'Guest Customer';
       const customerPhone = invoice.customerPhone || invoice.customer?.phone || 'Not provided';
       const invoiceNo = invoice.invoiceNo || 'N/A';
 
-      // Dynamic receipt height based on item count
-      const calculatedHeight = Math.max(340, 260 + (items.length * 28));
+      let reviewQrBuffer = null;
+      try {
+        reviewQrBuffer = await QRCode.toBuffer(reviewUrl, { width: 120, margin: 1 });
+      } catch (err) {
+        logger.warn({ err: err?.message }, 'Failed to generate review QR for thermal PDF');
+      }
+
+      // Dynamic receipt height based on item count + Google review section (~95pt)
+      const calculatedHeight = Math.max(420, 360 + (items.length * 28));
       const pageWidth = 226.77; // 80mm in points
 
       const doc = new PDFDocument({
@@ -314,6 +361,11 @@ export const generateThermalReceiptPDF = async (invoice) => {
       // Address
       doc.font('Courier').fontSize(8).fillColor('#000000')
         .text(storeAddress, 10, y, { align: 'center', width: printableWidth });
+      y += 13;
+
+      // Mobile
+      doc.font('Courier').fontSize(8).fillColor('#000000')
+        .text(`Mobile: ${storePhone}`, 10, y, { align: 'center', width: printableWidth });
       y += 14;
 
       // Receipt Title
@@ -405,7 +457,30 @@ export const generateThermalReceiptPDF = async (invoice) => {
       doc.font('Courier').fontSize(8.5);
       doc.text(paymentMode, 10, y);
       doc.text(`Rs ${total.toFixed(2)}`, 120, y, { width: 86, align: 'right' });
-      y += 16;
+      y += 14;
+
+      // Google Review Section (Thermal)
+      if (reviewQrBuffer) {
+        drawDashedLine(y);
+        y += 5;
+        doc.font('Courier-Bold').fontSize(7.5).fillColor('#000000')
+          .text('* RATE & REVIEW US ON GOOGLE *', 10, y, { align: 'center', width: printableWidth });
+        y += 11;
+        const qrSize = 58;
+        const qrX = (pageWidth - qrSize) / 2;
+        doc.image(reviewQrBuffer, qrX, y, { width: qrSize, height: qrSize });
+        y += qrSize + 3;
+        doc.font('Courier').fontSize(6.5).fillColor('#0000ee')
+          .text('Review: https://g.page/r/Cfk-_b7c-aDIEBM/review', 10, y, {
+            align: 'center',
+            width: printableWidth,
+            link: reviewUrl,
+            underline: true,
+          });
+        y += 10;
+        drawDashedLine(y);
+        y += 6;
+      }
 
       // Footer
       doc.font('Courier').fontSize(7.5).fillColor('#222222')

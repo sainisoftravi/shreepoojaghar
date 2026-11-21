@@ -13,7 +13,8 @@ data:
   WHATSAPP_PROVIDER: "opensource"
   CORS_ORIGIN: "*"
   STORE_NAME: "Shree Pooja Ghar"
-  STORE_ADDRESS: "Ajmer, Rajasthan, India"
-  STORE_PHONE: ""
+  STORE_ADDRESS: "Moti Vihar Colony, Ajmer, Rajasthan 305004"
+  STORE_PHONE: "+91 9588215257"
+  GOOGLE_REVIEW_URL: "https://g.page/r/Cfk-_b7c-aDIEBM/review"
   # Frontend internal backend routing
   BACKEND_URL: "http://backend-service.shree-pooja.svc.cluster.local:3001"
