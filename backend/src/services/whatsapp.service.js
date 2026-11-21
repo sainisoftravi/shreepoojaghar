@@ -29,6 +29,18 @@ const readyWaiters = new Set();
 
 const AUTH_DIR = path.resolve(process.cwd(), '.baileys_auth');
 
+const clearAuthDir = () => {
+  try {
+    if (fs.existsSync(AUTH_DIR)) {
+      for (const file of fs.readdirSync(AUTH_DIR)) {
+        fs.rmSync(path.join(AUTH_DIR, file), { recursive: true, force: true });
+      }
+    }
+  } catch (err) {
+    logger.warn({ err: err?.message }, 'Failed to clear auth directory files');
+  }
+};
+
 export const initWhatsApp = async () => {
   try {
     if (!fs.existsSync(AUTH_DIR)) {
@@ -120,9 +132,7 @@ export const requestPairingCode = async (phone) => {
   } catch (err) {
     logger.warn({ err: err.message }, 'Pairing code request failed, resetting stale session and retrying...');
     try {
-      if (fs.existsSync(AUTH_DIR)) {
-        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-      }
+    clearAuthDir();
     } catch (_) {}
 
     await initWhatsApp();
@@ -154,9 +164,7 @@ export const logoutWhatsApp = async () => {
     waStatus = 'DISCONNECTED';
     connectedPhone = null;
     waQrCode = null;
-    try {
-      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-    } catch (e) {}
+    clearAuthDir();
     setTimeout(initWhatsApp, 2000);
   }
 };
