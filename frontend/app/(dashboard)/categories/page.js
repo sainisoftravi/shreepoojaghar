@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../../../lib/api.js';
 import { useAuth } from '../../../context/AuthContext.js';
-import { Tags, Plus, Trash2, Edit2, Layers } from 'lucide-react';
+import { fetchHindiTranslation, debounceTranslateToHindi } from '../../../lib/translate.js';
+import { Tags, Plus, Trash2, Edit2, Layers, Sparkles } from 'lucide-react';
 
 export default function CategoriesPage() {
   const { user } = useAuth();
@@ -13,6 +14,7 @@ export default function CategoriesPage() {
 
   const [nameEn, setNameEn] = useState('');
   const [nameHi, setNameHi] = useState('');
+  const [userEditedHi, setUserEditedHi] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -72,6 +74,7 @@ export default function CategoriesPage() {
     setEditingCategory(cat);
     setNameEn(cat.nameEn);
     setNameHi(cat.nameHi);
+    setUserEditedHi(true);
     setShowModal(true);
   };
 
@@ -79,6 +82,7 @@ export default function CategoriesPage() {
     setEditingCategory(null);
     setNameEn('');
     setNameHi('');
+    setUserEditedHi(false);
   };
 
   return (
@@ -181,21 +185,48 @@ export default function CategoriesPage() {
                   className="input-control"
                   placeholder="e.g. Pooja Samagri"
                   value={nameEn}
-                  onChange={(e) => setNameEn(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNameEn(val);
+                    if (!userEditedHi || !nameHi) {
+                      debounceTranslateToHindi(val, (translated) => {
+                        setNameHi(translated);
+                      });
+                    }
+                  }}
                   required
                 />
               </div>
 
               <div className="input-group">
-                <label>Hindi Category Name</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                  <label style={{ margin: 0 }}>Hindi Category Name</label>
+                  <button
+                    type="button"
+                    style={{ background: 'none', border: 'none', color: '#ea580c', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}
+                    onClick={async () => {
+                      if (!nameEn) return;
+                      const tr = await fetchHindiTranslation(nameEn);
+                      if (tr) setNameHi(tr);
+                    }}
+                  >
+                    <Sparkles size={13} /> Auto-translate
+                  </button>
+                </div>
                 <input
                   type="text"
                   className="input-control"
                   placeholder="e.g. पूजा सामग्री"
                   value={nameHi}
-                  onChange={(e) => setNameHi(e.target.value)}
+                  onChange={(e) => {
+                    setNameHi(e.target.value);
+                    setUserEditedHi(true);
+                  }}
                   required
                 />
+                <small style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                  Auto-translates from English. You can edit any word if needed.
+                </small>
               </div>
 
               <div style={styles.modalActions}>

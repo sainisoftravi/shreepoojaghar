@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api.js';
 import { useAuth } from '../../../context/AuthContext.js';
-import { Package, Plus, AlertTriangle, Layers, Tag, DollarSign, Search, Trash2, X, Check, Edit } from 'lucide-react';
+import { Package, Plus, AlertTriangle, Layers, Tag, DollarSign, Search, Trash2, X, Check, Edit, Sparkles } from 'lucide-react';
+import { fetchHindiTranslation, debounceTranslateToHindi } from '../../../lib/translate.js';
 
 const getPurchaseUnits = (product) => {
   const units = product?.units || [];
@@ -35,6 +36,7 @@ export default function InventoryPage() {
   // New Product Form
   const [nameEn, setNameEn] = useState('');
   const [nameHi, setNameHi] = useState('');
+  const [userEditedHi, setUserEditedHi] = useState(false);
   const [categoryId, setCategoryId] = useState('');
   const [baseUnit, setBaseUnit] = useState('kg');
   const [allowDecimalQty, setAllowDecimalQty] = useState(true);
@@ -242,6 +244,7 @@ export default function InventoryPage() {
     setError('');
     setNameEn(p.nameEn || '');
     setNameHi(p.nameHi || '');
+    setUserEditedHi(true);
     setCategoryId(p.categoryId || (p.category ? p.category.id : ''));
     setBaseUnit(p.baseUnit || 'kg');
     setAllowDecimalQty(Boolean(p.allowDecimalQty));
@@ -316,6 +319,7 @@ export default function InventoryPage() {
     setEditingProduct(null);
     setNameEn('');
     setNameHi('');
+    setUserEditedHi(false);
     setBarcode('');
     setBaseUnit('kg');
     setAllowDecimalQty(true);
@@ -607,11 +611,48 @@ export default function InventoryPage() {
                     <div className="form-grid">
                       <div className="input-group">
                         <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>English Name *</label>
-                        <input type="text" className="input-control" placeholder="e.g. Pure Desi Ghee" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+                        <input
+                          type="text"
+                          className="input-control"
+                          placeholder="e.g. Pure Desi Ghee"
+                          value={nameEn}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setNameEn(val);
+                            if (!userEditedHi || !nameHi) {
+                              debounceTranslateToHindi(val, (translated) => {
+                                setNameHi(translated);
+                              });
+                            }
+                          }}
+                          required
+                        />
                       </div>
                       <div className="input-group">
-                        <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', marginBottom: 4 }}>Hindi Name</label>
-                        <input type="text" className="input-control" placeholder="e.g. शुद्ध देसी घी" value={nameHi} onChange={(e) => setNameHi(e.target.value)} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <label style={{ fontWeight: 600, fontSize: '0.86rem', color: '#334155', margin: 0 }}>Hindi Name</label>
+                          <button
+                            type="button"
+                            style={{ background: 'none', border: 'none', color: '#ea580c', fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}
+                            onClick={async () => {
+                              if (!nameEn) return;
+                              const tr = await fetchHindiTranslation(nameEn);
+                              if (tr) setNameHi(tr);
+                            }}
+                          >
+                            <Sparkles size={12} /> Auto-translate
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          className="input-control"
+                          placeholder="e.g. शुद्ध देसी घी"
+                          value={nameHi}
+                          onChange={(e) => {
+                            setNameHi(e.target.value);
+                            setUserEditedHi(true);
+                          }}
+                        />
                       </div>
                     </div>
 

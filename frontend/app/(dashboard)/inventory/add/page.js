@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '../../../../lib/api.js';
-import { ArrowLeft, Plus, Layers, Package, Trash2, Upload, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Plus, Layers, Package, Trash2, Upload, CheckCircle2, Sparkles } from 'lucide-react';
+import { fetchHindiTranslation, debounceTranslateToHindi } from '../../../../lib/translate.js';
 
 export default function AddProductPage() {
   const router = useRouter();
@@ -12,6 +13,7 @@ export default function AddProductPage() {
   const [categories, setCategories] = useState([]);
   const [nameEn, setNameEn] = useState('');
   const [nameHi, setNameHi] = useState('');
+  const [userEditedHi, setUserEditedHi] = useState(false);
   const [categoryId, setCategoryId] = useState('');
   const [baseUnit, setBaseUnit] = useState('piece');
   const [allowDecimalQty, setAllowDecimalQty] = useState(false);
@@ -281,21 +283,48 @@ export default function AddProductPage() {
                   className="input-control"
                   placeholder="e.g. Sugar (Chini)"
                   value={nameEn}
-                  onChange={(e) => setNameEn(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNameEn(val);
+                    if (!userEditedHi || !nameHi) {
+                      debounceTranslateToHindi(val, (translated) => {
+                        setNameHi(translated);
+                      });
+                    }
+                  }}
                   required
                 />
               </div>
 
               <div className="input-group">
-                <label>Hindi Product Name *</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                  <label style={{ margin: 0 }}>Hindi Product Name *</label>
+                  <button
+                    type="button"
+                    style={{ background: 'none', border: 'none', color: '#ea580c', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}
+                    onClick={async () => {
+                      if (!nameEn) return;
+                      const tr = await fetchHindiTranslation(nameEn);
+                      if (tr) setNameHi(tr);
+                    }}
+                  >
+                    <Sparkles size={13} /> Auto-translate
+                  </button>
+                </div>
                 <input
                   type="text"
                   className="input-control"
                   placeholder="e.g. चीनी / शक्कर"
                   value={nameHi}
-                  onChange={(e) => setNameHi(e.target.value)}
+                  onChange={(e) => {
+                    setNameHi(e.target.value);
+                    setUserEditedHi(true);
+                  }}
                   required
                 />
+                <small style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                  Auto-translates from English. You can edit any word if needed.
+                </small>
               </div>
             </div>
 

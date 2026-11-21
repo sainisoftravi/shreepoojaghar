@@ -22,6 +22,7 @@ import userRoutes from './routes/user.route.js';
 import upiRoutes from './routes/upi.route.js';
 import whatsappRoutes from './routes/whatsapp.route.js';
 import dbsyncRoutes from './routes/dbsync.route.js';
+import translateRoutes from './routes/translate.route.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,6 +68,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/upi', upiRoutes);
 app.use('/api/v1/whatsapp', whatsappRoutes);
 app.use('/api/v1/dbsync', dbsyncRoutes);
+app.use('/api/v1/translate', translateRoutes);
 
 // 404 handler
 app.use((req, res, next) => {
