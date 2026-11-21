@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { apiFetch } from '../lib/api.js';
+import { encryptLoginPayload } from '../lib/crypto-login.js';
 
 const AuthContext = createContext();
 
@@ -38,9 +39,18 @@ export function AuthProvider({ children }) {
   };
 
   const login = async (email, password) => {
+    let bodyObj = { email, password };
+
+    try {
+      const encryptedPayload = await encryptLoginPayload(email, password);
+      if (encryptedPayload) {
+        bodyObj = { encryptedPayload };
+      }
+    } catch (_) {}
+
     const res = await apiFetch('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(bodyObj),
     });
 
     const token = res.data?.token;
