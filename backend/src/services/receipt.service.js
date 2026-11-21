@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { logger } from '../config/logger.js';
+import { decryptPii } from '../utils/customer-privacy.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -115,7 +116,7 @@ export const generateReceiptPDF = async (invoice) => {
         const lineTotal = getItemGrossTotal(item);
 
         doc.fillColor('#0f172a').font('Helvetica-Bold')
-          .text(item.productName || 'Product', 50, y, { width: 250 });
+          .text(decryptPii(item.productName) || 'Product', 50, y, { width: 250 });
         doc.fillColor('#475569').font('Helvetica')
           .text(`${qty}${unitName}`, 310, y, { width: 50, align: 'right' })
           .text(`Rs ${unitPrice.toFixed(2)}`, 380, y, { width: 70, align: 'right' })
@@ -151,7 +152,8 @@ export const generateReceiptPDF = async (invoice) => {
 
       // Footer note
       doc.fillColor('#94a3b8').fontSize(8).font('Helvetica')
-        .text('Thank you for shopping with us! Have a blessed day. 🙏', 40, 750, { align: 'center', width: 515 });
+        .text('Thank you for shopping with us! Have a blessed day. 🙏', 40, 745, { align: 'center', width: 515 })
+        .text('This is a computer-generated invoice and does not require a signature.', 40, 758, { align: 'center', width: 515 });
 
       doc.end();
     } catch (err) {
@@ -194,7 +196,7 @@ export const generateThermalReceiptHTML = (invoice) => {
     const amount = getItemGrossTotal(item);
     return `
       <div class="item-row">
-        <span class="item-name">${escapeHtml(item.productName || 'Product')}${item.unitName ? `<small class="item-unit">${escapeHtml(item.unitName)}</small>` : ''}</span>
+        <span class="item-name">${escapeHtml(decryptPii(item.productName) || 'Product')}${item.unitName ? `<small class="item-unit">${escapeHtml(decryptPii(item.unitName))}</small>` : ''}</span>
         <span class="item-qty">${quantity.toLocaleString('en-IN', { maximumFractionDigits: 3 })}</span>
         <span class="item-amount">${amount.toFixed(2)}</span>
       </div>`;
@@ -250,7 +252,10 @@ export const generateThermalReceiptHTML = (invoice) => {
         <div class="totals-row total"><span>TOTAL</span><strong>Rs ${total.toFixed(2)}</strong></div>
         <div class="totals-row payment"><span>${paymentMode}</span><strong>Rs ${total.toFixed(2)}</strong></div>
       </section>
-      <footer class="footer center">Thank you for shopping with us!</footer>
+      <footer class="footer center">
+        <div>Thank you for shopping with us!</div>
+        <div style="font-size: 7.5pt; margin-top: 4px; color: #444;">This is a computer-generated invoice and does not require a signature.</div>
+      </footer>
     </body>
     </html>`;
 };
@@ -259,5 +264,160 @@ export const generateThermalReceiptHTML = (invoice) => {
  * Generate 80mm thermal receipt PDF using PDFKit
  */
 export const generateThermalReceiptPDF = async (invoice) => {
-  return generateReceiptPDF(invoice);
+  return new Promise((resolve, reject) => {
+    try {
+      const createdAt = new Date(invoice.createdAt || Date.now());
+      const date = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
+      const dateStr = date.toLocaleDateString('en-IN', {
+        timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric',
+      });
+      const timeStr = date.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit',
+      });
+
+      const items = Array.isArray(invoice.items) ? invoice.items : [];
+      const subtotal = getInvoiceSubtotal(invoice, items);
+      const discountAmount = Number(invoice.discountAmount || 0);
+      const total = Number(invoice.totalAmount || 0);
+      const paymentLabels = { CASH: 'Cash', UPI: 'UPI', CARD: 'Card', KHATA: 'Khata' };
+      const paymentMode = paymentLabels[String(invoice.paymentMode || '').toUpperCase()] || invoice.paymentMode || 'Cash';
+
+      const storeName = process.env.STORE_NAME || 'SHREE POOJA GHAR';
+      const storeAddress = process.env.STORE_ADDRESS || 'Ajmer, Rajasthan, India';
+      const customerName = invoice.customerName || invoice.customer?.name || 'Guest Customer';
+      const customerPhone = invoice.customerPhone || invoice.customer?.phone || 'Not provided';
+      const invoiceNo = invoice.invoiceNo || 'N/A';
+
+      // Dynamic receipt height based on item count
+      const calculatedHeight = Math.max(340, 260 + (items.length * 28));
+      const pageWidth = 226.77; // 80mm in points
+
+      const doc = new PDFDocument({
+        size: [pageWidth, calculatedHeight],
+        margins: { top: 10, bottom: 10, left: 10, right: 10 },
+      });
+
+      const buffers = [];
+      doc.on('data', (chunk) => buffers.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', (err) => reject(err));
+
+      const printableWidth = pageWidth - 20; // 206.77 pt
+
+      let y = 12;
+
+      // Brand
+      doc.font('Courier-Bold').fontSize(11).fillColor('#000000')
+        .text(storeName.toUpperCase(), 10, y, { align: 'center', width: printableWidth });
+      y += 14;
+
+      // Address
+      doc.font('Courier').fontSize(8).fillColor('#000000')
+        .text(storeAddress, 10, y, { align: 'center', width: printableWidth });
+      y += 14;
+
+      // Receipt Title
+      doc.font('Courier-Bold').fontSize(9.5)
+        .text('RETAIL INVOICE', 10, y, { align: 'center', width: printableWidth });
+      y += 15;
+
+      // Metadata
+      doc.font('Courier').fontSize(8);
+      doc.text(`Invoice: ${invoiceNo}`, 10, y);
+      y += 11;
+      doc.text(`Date: ${dateStr} ${timeStr}`, 10, y);
+      y += 11;
+      doc.text(`Payment Mode: ${paymentMode}`, 10, y);
+      y += 11;
+      doc.text(`Customer: ${customerName}`, 10, y);
+      y += 11;
+      doc.text(`Mobile: ${customerPhone}`, 10, y);
+      y += 12;
+
+      // Helper dashed line
+      const drawDashedLine = (currY) => {
+        doc.moveTo(10, currY).lineTo(pageWidth - 10, currY)
+          .dash(2, { space: 2 }).strokeColor('#000000').lineWidth(0.75).stroke().undash();
+      };
+
+      drawDashedLine(y);
+      y += 4;
+
+      // Table Header: Item (left), Qty (col 2), Amt (col 3)
+      doc.font('Courier-Bold').fontSize(8);
+      doc.text('Item', 10, y, { width: 110 });
+      doc.text('Qty', 120, y, { width: 35, align: 'right' });
+      doc.text('Amt', 160, y, { width: 46, align: 'right' });
+      y += 11;
+
+      drawDashedLine(y);
+      y += 4;
+
+      // Items
+      doc.font('Courier').fontSize(8);
+      items.forEach((item) => {
+        const qty = Number(item.qtyInUnit ?? item.quantity ?? 1);
+        const unitName = item.unitName ? String(decryptPii(item.unitName)) : '';
+        const lineTotal = getItemGrossTotal(item);
+        const pName = decryptPii(item.productName) || 'Product';
+
+        doc.text(pName, 10, y, { width: 110 });
+        doc.text(String(qty), 120, y, { width: 35, align: 'right' });
+        doc.text(lineTotal.toFixed(2), 160, y, { width: 46, align: 'right' });
+        y += 10;
+
+        if (unitName) {
+          doc.fontSize(7.5).fillColor('#333333').text(unitName, 10, y, { width: 110 });
+          doc.fontSize(8).fillColor('#000000');
+          y += 9;
+        }
+      });
+
+      y += 2;
+      drawDashedLine(y);
+      y += 5;
+
+      // Subtotal
+      doc.text('Subtotal', 10, y);
+      doc.text(`Rs ${subtotal.toFixed(2)}`, 120, y, { width: 86, align: 'right' });
+      y += 11;
+
+      if (discountAmount > 0) {
+        doc.text('Discount', 10, y);
+        doc.text(`- Rs ${discountAmount.toFixed(2)}`, 120, y, { width: 86, align: 'right' });
+        y += 11;
+      }
+
+      // Divider
+      doc.moveTo(10, y).lineTo(pageWidth - 10, y).strokeColor('#000000').lineWidth(0.8).stroke();
+      y += 4;
+
+      // TOTAL
+      doc.font('Courier-Bold').fontSize(9);
+      doc.text('TOTAL', 10, y);
+      doc.text(`Rs ${total.toFixed(2)}`, 120, y, { width: 86, align: 'right' });
+      y += 13;
+
+      doc.moveTo(10, y).lineTo(pageWidth - 10, y).strokeColor('#000000').lineWidth(0.8).stroke();
+      y += 5;
+
+      // Payment line
+      doc.font('Courier').fontSize(8.5);
+      doc.text(paymentMode, 10, y);
+      doc.text(`Rs ${total.toFixed(2)}`, 120, y, { width: 86, align: 'right' });
+      y += 16;
+
+      // Footer
+      doc.font('Courier').fontSize(7.5).fillColor('#222222')
+        .text('Thank you for shopping with us!', 10, y, { align: 'center', width: printableWidth });
+      y += 10;
+      doc.fontSize(6.5).fillColor('#444444')
+        .text('This is a computer-generated invoice and does not require a signature.', 10, y, { align: 'center', width: printableWidth });
+
+      doc.end();
+    } catch (err) {
+      logger.error({ err }, 'Failed to generate thermal PDF');
+      reject(err);
+    }
+  });
 };

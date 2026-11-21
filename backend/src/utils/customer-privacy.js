@@ -143,6 +143,16 @@ export const decryptCustomerPii = (customer) => {
   };
 };
 
+export const decryptInvoiceItem = (item) => {
+  if (!item) return item;
+  return {
+    ...item,
+    productName: decryptPii(item.productName),
+    unitName: decryptPii(item.unitName),
+    product: item.product ? decryptProduct(item.product) : item.product,
+  };
+};
+
 export const decryptInvoicePii = (invoice) => {
   if (!invoice) return invoice;
   return {
@@ -150,6 +160,7 @@ export const decryptInvoicePii = (invoice) => {
     customerPhone: decryptPii(invoice.customerPhone),
     customerName: decryptPii(invoice.customerName),
     ...(invoice.customer ? { customer: decryptCustomerPii(invoice.customer) } : {}),
+    ...(invoice.items ? { items: invoice.items.map(decryptInvoiceItem) } : {}),
   };
 };
 

@@ -2,12 +2,22 @@ import {
   requestPairingCode,
   getWhatsAppStatus,
   logoutWhatsApp,
+  refreshWhatsAppQR,
 } from '../services/whatsapp.service.js';
 import { whatsappQueue } from '../jobs/whatsapp.queue.js';
 
 export const getStatus = (req, res) => {
   const statusInfo = getWhatsAppStatus();
   res.json({ success: true, ...statusInfo });
+};
+
+export const refreshQr = async (req, res) => {
+  try {
+    const result = await refreshWhatsAppQR();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message || 'Failed to refresh QR code' });
+  }
 };
 
 export const pairPhone = async (req, res) => {

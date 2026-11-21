@@ -7,7 +7,7 @@ import makeWASocket, {
 import pino from 'pino';
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../config/logger.js';
-import { generateReceiptPDF } from './receipt.service.js';
+import { generateReceiptPDF, generateThermalReceiptPDF } from './receipt.service.js';
 import { decryptProduct, decryptCustomerPii } from '../utils/customer-privacy.js';
 import fs from 'fs';
 import path from 'path';
@@ -155,18 +155,42 @@ export const getWhatsAppStatus = () => {
 };
 
 export const logoutWhatsApp = async () => {
-  if (sock) {
-    try {
-      await sock.logout();
-    } catch (e) {
-      logger.error({ err: e }, 'Error logging out from WhatsApp');
+  try {
+    if (sock) {
+      await sock.logout().catch(() => {});
+      try { sock.end?.(); } catch (_) {}
+      sock = null;
     }
-    waStatus = 'DISCONNECTED';
-    connectedPhone = null;
-    waQrCode = null;
-    clearAuthDir();
-    setTimeout(initWhatsApp, 2000);
+  } catch (e) {
+    logger.error({ err: e }, 'Error logging out from WhatsApp');
   }
+  waStatus = 'DISCONNECTED';
+  connectedPhone = null;
+  waQrCode = null;
+  clearAuthDir();
+  setTimeout(initWhatsApp, 1500);
+};
+
+export const refreshWhatsAppQR = async () => {
+  try {
+    if (sock) {
+      try { sock.end?.(); } catch (_) {}
+      sock = null;
+    }
+  } catch (_) {}
+  waStatus = 'DISCONNECTED';
+  waQrCode = null;
+  connectedPhone = null;
+  clearAuthDir();
+  await initWhatsApp();
+  for (let i = 0; i < 20; i++) {
+    if (waQrCode) break;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return {
+    status: waStatus,
+    qr: waQrCode,
+  };
 };
 
 export const waitForWhatsAppClientReady = async () => {
@@ -224,13 +248,13 @@ export const sendWhatsAppInvoice = async (invoice) => {
   const mockMode = process.env.NODE_ENV === 'test' || process.env.WHATSAPP_PROVIDER === 'mock';
   if (!mockMode) await waitForWhatsAppClientReady();
 
-  logger.info({ invoiceNo: invoice.invoiceNo }, 'Generating PDF receipt...');
+  logger.info({ invoiceNo: invoice.invoiceNo }, 'Generating thermal PDF receipt...');
 
   let pdfBuffer;
   try {
-    pdfBuffer = await generateReceiptPDF(invoice);
+    pdfBuffer = await generateThermalReceiptPDF(invoice);
   } catch (err) {
-    logger.error({ err, invoiceNo: invoice.invoiceNo }, 'PDF generation failed');
+    logger.error({ err, invoiceNo: invoice.invoiceNo }, 'Thermal PDF generation failed');
     throw err;
   }
 

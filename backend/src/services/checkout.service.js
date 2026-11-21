@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import {
   decryptCustomerPii,
   decryptInvoicePii,
+  decryptPii,
+  decryptProductUnit,
   encryptPii,
   getCustomerPhoneLookup,
   hashCheckoutRequest,
@@ -159,12 +161,12 @@ export const checkout = async ({ idempotencyKey, customerName, phone, paymentMod
           for (const p of lockedProducts) {
             productMap[p.id] = {
               ...p,
-              nameEn: p.name_en,
+              nameEn: decryptPii(p.name_en),
               baseUnit: p.base_unit,
               allowDecimalQty: p.allow_decimal_qty,
               lowStockThreshold: p.low_stock_threshold,
               totalStockBase: p.total_stock_base,
-              units: units.filter((u) => u.productId === p.id),
+              units: units.filter((u) => u.productId === p.id).map(decryptProductUnit),
             };
           }
 

@@ -165,8 +165,28 @@ export default function SettingsPage() {
     }
   };
 
+  const handleRefreshQr = async () => {
+    setWaLoading(true);
+    setWaCode('');
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/v1/whatsapp/refresh-qr', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.message);
+      if (json.qr) setWaQr(json.qr);
+      setWaStatus(json.status);
+    } catch (err) {
+      alert(err.message || 'Failed to refresh QR code');
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
   const handleWaLogout = async () => {
-    if (!window.confirm('Are you sure you want to disconnect WhatsApp?')) return;
+    if (!window.confirm('Are you sure you want to disconnect WhatsApp? You will be able to reconnect or change to any number.')) return;
     setWaLoading(true);
     try {
       const token = localStorage.getItem('token');
@@ -177,6 +197,7 @@ export default function SettingsPage() {
       const json = await res.json();
       if (!json.success) throw new Error(json.message);
       setWaCode('');
+      setWaQr(null);
       fetchWaStatus();
     } catch (err) {
       alert(err.message);
@@ -397,48 +418,75 @@ export default function SettingsPage() {
 
         {waStatus === 'CONNECTED' ? (
           <div>
-            <p style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>
-              Connected to: <strong>+{waConnectedPhone?.replace('@c.us', '')}</strong>
-            </p>
+            <div style={{ padding: '1rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', marginBottom: '1rem' }}>
+              <p style={{ color: '#065f46', margin: 0, fontWeight: 600 }}>
+                ✅ Currently Connected to: +{waConnectedPhone?.replace('@c.us', '')}
+              </p>
+              <small style={{ color: '#047857', display: 'block', marginTop: '0.25rem' }}>
+                All customer bills will be sent automatically from this WhatsApp number. You can update or change this number anytime below.
+              </small>
+            </div>
             <button onClick={handleWaLogout} className="btn btn-danger" style={{ background: '#fff0f0', color: '#a72e3e', border: '1px solid #f3c9ce' }} disabled={waLoading}>
-              {waLoading ? 'Disconnecting...' : 'Disconnect WhatsApp'}
+              {waLoading ? 'Disconnecting...' : 'Disconnect / Change WhatsApp Number'}
             </button>
           </div>
         ) : (
           <div>
-            {waQr && (
-              <div style={{ textAlign: 'center', marginBottom: '2rem', padding: '1.5rem', background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-color)', maxWidth: '340px' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', color: '#1e293b' }}>Scan QR to Connect Instantly</h4>
-                <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                  Open WhatsApp on your phone &gt; Linked Devices &gt; Link a Device &gt; Scan code:
-                </p>
-                <div style={{ display: 'inline-block', padding: '12px', background: '#fff', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.08)' }}>
-                  <QRCode value={waQr} size={220} level="M" />
+            {/* QR Code Option */}
+            <div style={{ marginBottom: '2rem', padding: '1.5rem', background: '#ffffff', borderRadius: '16px', border: '1px solid var(--border-color)', maxWidth: '420px', textAlign: 'center' }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', color: '#1e293b' }}>Option 1: Scan QR Code (Recommended)</h4>
+              <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                Open WhatsApp on phone &gt; Linked Devices &gt; Link a Device &gt; Scan this QR code:
+              </p>
+              {waQr ? (
+                <div>
+                  <div style={{ display: 'inline-block', padding: '12px', background: '#fff', borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.08)' }}>
+                    <QRCode value={waQr} size={220} level="M" />
+                  </div>
+                  <div style={{ marginTop: '1rem' }}>
+                    <button type="button" onClick={handleRefreshQr} className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem' }} disabled={waLoading}>
+                      🔄 Refresh QR Code
+                    </button>
+                  </div>
                 </div>
-                <div style={{ marginTop: '1rem', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
-                  — OR ENTER PHONE NUMBER BELOW —
+              ) : (
+                <div style={{ padding: '2rem 1rem', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+                  <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                    QR Code is generating or expired.
+                  </p>
+                  <button type="button" onClick={handleRefreshQr} className="btn btn-primary" disabled={waLoading}>
+                    {waLoading ? 'Generating QR...' : '⚡ Show QR Code Now'}
+                  </button>
                 </div>
-              </div>
-            )}
-            <form onSubmit={handleWaPair} className="settings-form" style={{ maxWidth: '600px' }}>
-              <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
-                <label>WhatsApp Number (with country code)</label>
-                <input 
-                  type="text" 
-                  className="input-control" 
-                  placeholder="e.g. 919876543210" 
-                  value={waPhone}
-                  onChange={e => setWaPhone(e.target.value)}
-                  disabled={waLoading || !!waCode}
-                  required 
-                />
-              </div>
-              {!waCode && (
-                <button type="submit" className="btn btn-primary" style={{ height: '42px' }} disabled={waLoading}>
-                  {waLoading ? 'Generating...' : 'Generate Pairing Code'}
-                </button>
               )}
-            </form>
+            </div>
+
+            {/* Phone Number Pairing Option */}
+            <div style={{ maxWidth: '600px', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', color: '#1e293b' }}>Option 2: Link with Phone Number</h4>
+              <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                Enter the mobile number you want to connect as store's WhatsApp sender.
+              </p>
+              <form onSubmit={handleWaPair} className="settings-form" style={{ maxWidth: '600px' }}>
+                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                  <label>WhatsApp Number (with country code, e.g. 919660149315)</label>
+                  <input 
+                    type="text" 
+                    className="input-control" 
+                    placeholder="e.g. 919660149315" 
+                    value={waPhone}
+                    onChange={e => setWaPhone(e.target.value)}
+                    disabled={waLoading || !!waCode}
+                    required 
+                  />
+                </div>
+                {!waCode && (
+                  <button type="submit" className="btn btn-secondary" style={{ height: '42px', minWidth: '160px' }} disabled={waLoading}>
+                    {waLoading ? 'Generating...' : 'Get Pairing Code'}
+                  </button>
+                )}
+              </form>
+            </div>
           </div>
         )}
 
@@ -458,8 +506,8 @@ export default function SettingsPage() {
               </div>
             </div>
             <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-              <button onClick={handleWaLogout} className="btn btn-secondary" disabled={waLoading}>
-                🔄 Cancel & Show QR Code Instead
+              <button onClick={handleRefreshQr} className="btn btn-secondary" disabled={waLoading}>
+                🔄 Cancel & Switch to QR Code
               </button>
             </div>
           </div>
