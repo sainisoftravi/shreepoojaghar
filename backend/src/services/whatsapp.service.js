@@ -2,6 +2,7 @@ import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
+  Browsers,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { PrismaClient } from '@prisma/client';
@@ -48,7 +49,7 @@ export const initWhatsApp = async () => {
       auth: state,
       logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
-      browser: ['Shree Pooja Ghar POS', 'Chrome', '1.0.0'],
+      browser: Browsers.ubuntu('Chrome'),
       syncFullHistory: false,
       generateHighQualityLinkPreview: false,
     });
