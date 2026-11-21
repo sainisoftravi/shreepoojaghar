@@ -471,11 +471,22 @@ export default function SettingsPage() {
                 <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
                   <label>WhatsApp Number (with country code, e.g. 919660149315)</label>
                   <input 
-                    type="text" 
+                    type="tel" 
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     className="input-control" 
                     placeholder="e.g. 919660149315" 
                     value={waPhone}
-                    onChange={e => setWaPhone(e.target.value)}
+                    onChange={(e) => setWaPhone(e.target.value.replace(/\D/g, ''))}
+                    onKeyDown={(e) => {
+                      if (
+                        !/[0-9]/.test(e.key) &&
+                        !['Backspace', 'Delete', 'Tab', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) &&
+                        !e.ctrlKey && !e.metaKey
+                      ) {
+                        e.preventDefault();
+                      }
+                    }}
                     disabled={waLoading || !!waCode}
                     required 
                   />

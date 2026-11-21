@@ -603,13 +603,26 @@ export default function DedicatedCartPage() {
                 <label>Phone Number (WhatsApp PDF Invoice)</label>
                 <input
                   type="tel"
-                  inputMode="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   autoComplete="tel"
                   required
                   className="input-control"
-                  placeholder="+91 98765 43210"
+                  placeholder="9876543210 (Numbers only)"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    const onlyNums = e.target.value.replace(/\D/g, '');
+                    setPhone(onlyNums);
+                  }}
+                  onKeyDown={(e) => {
+                    if (
+                      !/[0-9]/.test(e.key) &&
+                      !['Backspace', 'Delete', 'Tab', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) &&
+                      !e.ctrlKey && !e.metaKey
+                    ) {
+                      e.preventDefault();
+                    }
+                  }}
                   onBlur={handlePhoneBlur}
                 />
                 <small style={{ display: 'block', marginTop: '0.35rem', color: '#64748b', lineHeight: 1.4 }}>
