@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiFetch } from '../../../../lib/api.js';
 import { ArrowLeft, Plus, Layers, Package, Trash2, Upload, CheckCircle2, Sparkles } from 'lucide-react';
-import { fetchHindiTranslation, debounceTranslateToHindi } from '../../../../lib/translate.js';
+import { fetchHindiTranslation, fetchHindiWithSuggestions, debounceTranslateToHindi } from '../../../../lib/translate.js';
 
 export default function AddProductPage() {
   const router = useRouter();
@@ -13,6 +13,7 @@ export default function AddProductPage() {
   const [categories, setCategories] = useState([]);
   const [nameEn, setNameEn] = useState('');
   const [nameHi, setNameHi] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
   const [userEditedHi, setUserEditedHi] = useState(false);
   const [categoryId, setCategoryId] = useState('');
   const [baseUnit, setBaseUnit] = useState('piece');
@@ -307,8 +308,9 @@ export default function AddProductPage() {
                     const val = e.target.value;
                     setNameEn(val);
                     if (!userEditedHi || !nameHi) {
-                      debounceTranslateToHindi(val, (translated) => {
+                      debounceTranslateToHindi(val, (translated, suggs) => {
                         setNameHi(translated);
+                        if (suggs) setSuggestions(suggs);
                       });
                     }
                   }}
@@ -324,8 +326,9 @@ export default function AddProductPage() {
                     style={{ background: 'none', border: 'none', color: '#ea580c', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}
                     onClick={async () => {
                       if (!nameEn) return;
-                      const tr = await fetchHindiTranslation(nameEn);
-                      if (tr) setNameHi(tr);
+                      const res = await fetchHindiWithSuggestions(nameEn);
+                      if (res.translated) setNameHi(res.translated);
+                      if (res.suggestions) setSuggestions(res.suggestions);
                     }}
                   >
                     <Sparkles size={13} /> Auto-translate
@@ -334,7 +337,7 @@ export default function AddProductPage() {
                 <input
                   type="text"
                   className="input-control"
-                  placeholder="e.g. चीनी / शक्कर"
+                  placeholder="e.g. चीनी / शक्कर या दालचीनी"
                   value={nameHi}
                   onChange={(e) => {
                     setNameHi(e.target.value);
@@ -342,8 +345,35 @@ export default function AddProductPage() {
                   }}
                   required
                 />
+                {suggestions.length > 1 && (
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.45rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Google Typing:</span>
+                    {suggestions.map((s, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setNameHi(s);
+                          setUserEditedHi(true);
+                        }}
+                        style={{
+                          background: nameHi === s ? '#ffedd5' : '#f8fafc',
+                          border: nameHi === s ? '1px solid #ea580c' : '1px solid #cbd5e1',
+                          color: nameHi === s ? '#c2410c' : '#334155',
+                          fontSize: '0.78rem',
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <small style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
-                  Auto-translates from English. You can edit any word if needed.
+                  Auto-translates English & Hinglish words (Google typing). You can pick suggestions or edit anytime.
                 </small>
               </div>
             </div>

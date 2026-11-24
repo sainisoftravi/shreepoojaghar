@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { apiFetch } from '../../../lib/api.js';
 import { useAuth } from '../../../context/AuthContext.js';
 import { Package, Plus, AlertTriangle, Layers, Tag, DollarSign, Search, Trash2, X, Check, Edit, Sparkles, History } from 'lucide-react';
-import { fetchHindiTranslation, debounceTranslateToHindi } from '../../../lib/translate.js';
+import { fetchHindiTranslation, fetchHindiWithSuggestions, debounceTranslateToHindi } from '../../../lib/translate.js';
 
 const getPurchaseUnits = (product) => {
   const units = product?.units || [];
@@ -50,6 +50,7 @@ export default function InventoryPage() {
   // New Product Form
   const [nameEn, setNameEn] = useState('');
   const [nameHi, setNameHi] = useState('');
+  const [productSuggestions, setProductSuggestions] = useState([]);
   const [userEditedHi, setUserEditedHi] = useState(false);
   const [categoryId, setCategoryId] = useState('');
   const [baseUnit, setBaseUnit] = useState('kg');
@@ -266,6 +267,7 @@ export default function InventoryPage() {
     setError('');
     setNameEn(p.nameEn || '');
     setNameHi(p.nameHi || '');
+    setProductSuggestions([]);
     setUserEditedHi(true);
     setCategoryId(p.categoryId || (p.category ? p.category.id : ''));
     setBaseUnit(p.baseUnit || 'kg');
@@ -458,6 +460,7 @@ export default function InventoryPage() {
     setEditingProduct(null);
     setNameEn('');
     setNameHi('');
+    setProductSuggestions([]);
     setUserEditedHi(false);
     setBarcode('');
     setBaseUnit('kg');
@@ -771,14 +774,15 @@ export default function InventoryPage() {
                         <input
                           type="text"
                           className="input-control"
-                          placeholder="e.g. Pure Desi Ghee"
+                          placeholder="e.g. Pure Desi Ghee or daal cheeni"
                           value={nameEn}
                           onChange={(e) => {
                             const val = e.target.value;
                             setNameEn(val);
                             if (!userEditedHi || !nameHi) {
-                              debounceTranslateToHindi(val, (translated) => {
+                              debounceTranslateToHindi(val, (translated, suggs) => {
                                 setNameHi(translated);
+                                if (suggs) setProductSuggestions(suggs);
                               });
                             }
                           }}
@@ -793,8 +797,9 @@ export default function InventoryPage() {
                             style={{ background: 'none', border: 'none', color: '#ea580c', fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', fontWeight: 600 }}
                             onClick={async () => {
                               if (!nameEn) return;
-                              const tr = await fetchHindiTranslation(nameEn);
-                              if (tr) setNameHi(tr);
+                              const res = await fetchHindiWithSuggestions(nameEn);
+                              if (res.translated) setNameHi(res.translated);
+                              if (res.suggestions) setProductSuggestions(res.suggestions);
                             }}
                           >
                             <Sparkles size={12} /> Auto-translate
@@ -803,13 +808,40 @@ export default function InventoryPage() {
                         <input
                           type="text"
                           className="input-control"
-                          placeholder="e.g. शुद्ध देसी घी"
+                          placeholder="e.g. शुद्ध देसी घी या दालचीनी"
                           value={nameHi}
                           onChange={(e) => {
                             setNameHi(e.target.value);
                             setUserEditedHi(true);
                           }}
                         />
+                        {productSuggestions.length > 1 && (
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.45rem', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Google Typing:</span>
+                            {productSuggestions.map((s, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setNameHi(s);
+                                  setUserEditedHi(true);
+                                }}
+                                style={{
+                                  background: nameHi === s ? '#ffedd5' : '#f8fafc',
+                                  border: nameHi === s ? '1px solid #ea580c' : '1px solid #cbd5e1',
+                                  color: nameHi === s ? '#c2410c' : '#334155',
+                                  fontSize: '0.78rem',
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  cursor: 'pointer',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {s}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1029,10 +1061,10 @@ export default function InventoryPage() {
 
                     {!editingProduct && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '0.75rem 1rem', borderRadius: 10 }}>
-                        <input 
-                          type="checkbox" 
-                          id="notifyWhatsAppBatch" 
-                          checked={notifyWhatsAppBatch} 
+                        <input
+                          type="checkbox"
+                          id="notifyWhatsAppBatch"
+                          checked={notifyWhatsAppBatch}
                           onChange={(e) => setNotifyWhatsAppBatch(e.target.checked)}
                           style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
                         />
@@ -1446,10 +1478,10 @@ export default function InventoryPage() {
                     )}
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '0.75rem 1rem', borderRadius: '8px', marginTop: '1rem' }}>
-                      <input 
-                        type="checkbox" 
-                        id="notifyWhatsAppBatch" 
-                        checked={notifyWhatsAppBatch} 
+                      <input
+                        type="checkbox"
+                        id="notifyWhatsAppBatch"
+                        checked={notifyWhatsAppBatch}
                         onChange={(e) => setNotifyWhatsAppBatch(e.target.checked)}
                         style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#16a34a' }}
                       />
