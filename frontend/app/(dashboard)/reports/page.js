@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../../../lib/api.js';
-import { TrendingUp, DollarSign, PieChart, ShoppingBag, AlertTriangle, Calendar } from 'lucide-react';
+import { TrendingUp, IndianRupee, PieChart, ShoppingBag, AlertTriangle, Calendar } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 
 export default function ReportsPage() {
@@ -90,7 +90,7 @@ export default function ReportsPage() {
         <div style={styles.kpiCard} className="card animate-fade-in">
           <div style={styles.kpiMeta}>
             <span>Today Sales Revenue</span>
-            <DollarSign size={20} color="#b95117" />
+            <IndianRupee size={20} color="#b95117" />
           </div>
           <div style={styles.kpiValue}>₹{today.totalSales?.toFixed(2) || '0.00'}</div>
           <span style={styles.kpiSub}>Across {today.invoiceCount || 0} invoices</span>

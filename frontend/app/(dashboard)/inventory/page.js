@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '../../../lib/api.js';
 import { useAuth } from '../../../context/AuthContext.js';
-import { Package, Plus, AlertTriangle, Layers, Tag, DollarSign, Search, Trash2, X, Check, Edit, Sparkles, History } from 'lucide-react';
+import { Package, Plus, AlertTriangle, Layers, Tag, IndianRupee, Search, Trash2, X, Check, Edit, Sparkles, History } from 'lucide-react';
 import { fetchHindiTranslation, fetchHindiWithSuggestions, debounceTranslateToHindi } from '../../../lib/translate.js';
 
 const getPurchaseUnits = (product) => {
